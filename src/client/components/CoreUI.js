@@ -18,6 +18,8 @@ import { ControlPriorities } from '../../core/extras/ControlPriorities'
 import { ChevronDoubleUpIcon, HandIcon } from './Icons'
 import { Sidebar } from './Sidebar'
 import { Chatbot } from './Chatbot'
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+import { useSolanaSystem } from './useSolanaSystem'
 
 export function CoreUI({ world }) {
   const ref = useRef()
@@ -83,32 +85,69 @@ export function CoreUI({ world }) {
     }
   }, [])
   return (
-    <div
-      ref={ref}
-      className='coreui'
-      css={css`
-        position: absolute;
-        inset: 0;
-        overflow: hidden;
-      `}
-    >
-      {disconnected && <Disconnected />}
-      {!ui.reticleSuppressors && <Reticle world={world} />}
-      {<Toast world={world} />}
-      {ready && <ActionsBlock world={world} />}
-      {ready && <Sidebar world={world} ui={ui} />}
-      {ready && <Chat world={world} />}
-      {ready && <Chatbot world={world} />}
-      {/* {ready && <Side world={world} player={player} menu={menu} />} */}
-      {avatar && <AvatarPane key={avatar.hash} world={world} info={avatar} />}
-      {/* {apps && <AppsPane world={world} close={() => world.ui.toggleApps()} />} */}
-      {!ready && <LoadingOverlay world={world} />}
-      {kicked && <KickedOverlay code={kicked} />}
-      {ready && isTouch && <TouchBtns world={world} />}
-      {ready && isTouch && <TouchStick world={world} />}
-      {confirm && <Confirm options={confirm} />}
-      <div id='core-ui-portal' />
-    </div>
+    <>
+      <WalletModalButton world={world} />
+      <div
+        ref={ref}
+        className='coreui'
+        css={css`
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+        `}
+      >
+        {disconnected && <Disconnected />}
+        {!ui.reticleSuppressors && <Reticle world={world} />}
+        {<Toast world={world} />}
+        {ready && <ActionsBlock world={world} />}
+        {ready && <Sidebar world={world} ui={ui} />}
+        {ready && <Chat world={world} />}
+        {ready && <Chatbot world={world} />}
+        {/* {ready && <Side world={world} player={player} menu={menu} />} */}
+        {avatar && <AvatarPane key={avatar.hash} world={world} info={avatar} />}
+        {/* {apps && <AppsPane world={world} close={() => world.ui.toggleApps()} />} */}
+        {!ready && <LoadingOverlay world={world} />}
+        {kicked && <KickedOverlay code={kicked} />}
+        {ready && isTouch && <TouchBtns world={world} />}
+        {ready && isTouch && <TouchStick world={world} />}
+        {confirm && <Confirm options={confirm} />}
+        <div id='core-ui-portal' />
+      </div>
+    </>
+  )
+}
+
+function WalletModalButton({ world }) {
+  // Use the new Solana system hook
+  const { wallet, connection } = useSolanaSystem(world)
+
+  return (
+    process.env.PUBLIC_CONNECTION_STRATEGY == 'button' && (
+      <div
+        css={css`
+          position: absolute;
+          top: 20px;
+          right: 20px;
+        `}
+      >
+        <WalletMultiButton
+          style={{
+            background: 'linear-gradient(180deg, rgba(40, 40, 45, 0.9) 0%, rgba(25, 25, 30, 0.9) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            color: 'white',
+            borderRadius: '12px',
+            padding: '10px 20px',
+            transition: 'all 0.2s ease',
+            '&:hover': {
+              background: 'linear-gradient(180deg, rgba(50, 50, 55, 0.9) 0%, rgba(35, 35, 40, 0.9) 100%)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+            },
+          }}
+        />
+      </div>
+    )
   )
 }
 

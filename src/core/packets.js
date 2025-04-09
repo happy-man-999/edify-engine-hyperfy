@@ -27,6 +27,8 @@ const names = [
   'ai',
   'ping',
   'pong',
+  'requestTokenMetadata',
+  'tokenMetadata',
 ]
 
 const byName = {}
