@@ -172,6 +172,169 @@ fastify.get('/api/upload-check', async (req, reply) => {
   return { exists }
 })
 
+// Edify login endpoint
+fastify.post('/api/edify/login', async (req, reply) => {
+  try {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return reply.code(400).send({ message: 'Email and password are required' })
+    }
+
+    // Forward login request to edifyengine backend
+    const response = await fetch('http://localhost:5000/api/auth/signin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      return reply.code(response.status).send(data)
+    }
+
+    // Return token to client
+    return reply.send(data)
+  } catch (err) {
+    console.error('Error logging in:', err)
+    return reply.code(500).send({ message: 'Login failed', error: err.message })
+  }
+})
+
+// Google auth redirect endpoint
+fastify.get('/api/edify/google-auth', async (req, reply) => {
+  // Redirect to edifyengine's Google OAuth with special parameter
+  const edifyBackendUrl = 'http://localhost:5000'
+  const callbackUrl = encodeURIComponent(`${req.protocol}://${req.hostname}${req.hostname === 'localhost' ? ':' + (process.env.PORT || 3000) : ''}/api/edify/google-callback`)
+  
+  return reply.redirect(`${edifyBackendUrl}/api/auth/google?from=hyperfy&callback=${callbackUrl}`)
+})
+
+// Google auth callback endpoint
+fastify.get('/api/edify/google-callback', async (req, reply) => {
+  const token = req.query.token
+  
+  if (!token) {
+    return reply.type('text/html').send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Authentication Failed</title>
+        </head>
+        <body>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'edify-google-auth-error' }, '*');
+              window.close();
+            } else {
+              window.location.href = '/';
+            }
+          </script>
+        </body>
+      </html>
+    `)
+  }
+
+  // Send token back to opener window and close popup
+  return reply.type('text/html').send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Authentication Successful</title>
+      </head>
+      <body>
+        <script>
+          if (window.opener) {
+            window.opener.postMessage({ 
+              type: 'edify-google-auth-success', 
+              token: '${token}' 
+            }, '*');
+            window.close();
+          } else {
+            // If not in a popup, redirect to home with token
+            localStorage.setItem('edifyToken', '${token}');
+            window.location.href = '/';
+          }
+        </script>
+      </body>
+    </html>
+  `)
+})
+
+// Edify items endpoint with authentication
+fastify.get('/api/edify/items', async (req, reply) => {
+  try {
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization
+    const token = authHeader && authHeader.split(' ')[1] // Bearer TOKEN
+
+    if (!token) {
+      return reply.code(401).send({ message: 'Authentication required' })
+    }
+
+    let url, response
+
+    if (req.query.purchasedOnly === 'true') {
+      // Use /api/user/purchases for purchased items
+      url = 'http://localhost:5000/api/user/purchases'
+      
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch purchases: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      
+      // Transform purchases data to match items format
+      const items = data.purchases.map(purchase => purchase.item)
+      
+      return reply.send({
+        success: true,
+        items: items
+      })
+    } else {
+      // Use /api/items for type-filtered items (public endpoint, no auth required)
+      const queryParams = new URLSearchParams()
+      if (req.query.type) {
+        queryParams.append('type', req.query.type)
+      }
+
+      const queryString = queryParams.toString()
+      url = `http://localhost:5000/api/items${queryString ? '?' + queryString : ''}`
+
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch items: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      return reply.send({
+        success: true,
+        items: data.items
+      })
+    }
+  } catch (err) {
+    console.error('Error fetching Edify items:', err)
+    return reply.code(500).send({ error: err.message })
+  }
+})
+
 fastify.get('/health', async (request, reply) => {
   try {
     // Basic health check

@@ -895,6 +895,7 @@ function Apps({ world, hidden }) {
 function Add({ world, hidden }) {
   // note: multiple collections are supported by the engine but for now we just use the 'default' collection.
   const collection = world.collections.get('default')
+  const [showEdify, setShowEdify] = useState(false)
   const span = 4
   const gap = '0.5rem'
   const add = blueprint => {
@@ -939,6 +940,7 @@ function Add({ world, hidden }) {
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             display: flex;
             align-items: center;
+            gap: 0.5rem;
           }
           .add-title {
             font-weight: 500;
@@ -979,22 +981,787 @@ function Add({ world, hidden }) {
           <div className='add-title'>Add</div>
         </div>
         <div className='add-content noscrollbar'>
-          <div className='add-items'>
-            {collection.blueprints.map(blueprint => (
-              <div className='add-item' key={blueprint.id} onClick={() => add(blueprint)}>
+          {showEdify ? (
+            <EdifyItems world={world} onClose={() => setShowEdify(false)} />
+          ) : (
+            <div className='add-items'>
+              <div className='add-item' onClick={() => setShowEdify(true)}>
                 <div
                   className='add-item-image'
                   css={css`
-                    background-image: url(${world.resolveURL(blueprint.image?.url)});
+                    background: linear-gradient(135deg, rgba(100, 100, 255, 0.2) 0%, rgba(200, 100, 255, 0.2) 100%);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    color: rgba(255, 255, 255, 0.8);
                   `}
-                ></div>
-                <div className='add-item-name'>{blueprint.name}</div>
+                >
+                  E
+                </div>
+                <div className='add-item-name'>Edify</div>
               </div>
-            ))}
-          </div>
+              {collection.blueprints.map(blueprint => (
+                <div className='add-item' key={blueprint.id} onClick={() => add(blueprint)}>
+                  <div
+                    className='add-item-image'
+                    css={css`
+                      background-image: url(${world.resolveURL(blueprint.image?.url)});
+                    `}
+                  ></div>
+                  <div className='add-item-name'>{blueprint.name}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Pane>
+  )
+}
+
+const edifyTypes = [
+  { value: 'my-purchases', label: 'My Purchases', icon: '🛒', isPurchaseFilter: true },
+  { value: 'app', label: 'App', icon: '📱' },
+  { value: 'bundle', label: 'Bundle', icon: '📦' },
+  { value: 'template', label: 'Template', icon: '📋' },
+  { value: 'world', label: 'World', icon: '🌍' },
+  { value: 'asset', label: 'Asset', icon: '🎨' },
+  { value: 'service', label: 'Service', icon: '⚙️' },
+  { value: '3d-object', label: '3D Object', icon: '🧊' },
+]
+
+function EdifyLogin({ onClose, onLoginSuccess }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    // Listen for Google auth messages from popup
+    const handleMessage = (event) => {
+      if (event.data.type === 'edify-google-auth-success' && event.data.token) {
+        localStorage.setItem('edifyToken', event.data.token)
+        onLoginSuccess()
+      } else if (event.data.type === 'edify-google-auth-error') {
+        setError('Google authentication failed. Please try again.')
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [onLoginSuccess])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!email || !password) {
+      setError('Please enter both email and password')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      // Call the login endpoint
+      const response = await fetch('/api/edify/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed')
+      }
+
+      // Store token in localStorage
+      localStorage.setItem('edifyToken', data.token)
+      
+      // Call success callback
+      onLoginSuccess()
+    } catch (err) {
+      console.error('Login error:', err)
+      setError(err.message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleGoogleSignin = () => {
+    // Open Google auth in a popup window
+    const width = 500
+    const height = 600
+    const left = window.screen.width / 2 - width / 2
+    const top = window.screen.height / 2 - height / 2
+    
+    const popup = window.open(
+      '/api/edify/google-auth',
+      'Google Sign In',
+      `width=${width},height=${height},left=${left},top=${top}`
+    )
+
+    // Fallback if popup is blocked
+    if (!popup) {
+      window.location.href = '/api/edify/google-auth'
+    }
+  }
+
+  return (
+    <div
+      className='edify-login'
+      css={css`
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0.5rem 0;
+        
+        .edify-login-header {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        
+        .edify-back-btn {
+          width: 2rem;
+          height: 2rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.5rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          color: rgba(255, 255, 255, 0.8);
+          &:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: white;
+          }
+        }
+        
+        .edify-login-title {
+          flex: 1;
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .edify-login-subtitle {
+          font-size: 0.875rem;
+          color: rgba(255, 255, 255, 0.6);
+          margin-bottom: 0.5rem;
+        }
+        
+        .edify-login-form {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        
+        .edify-form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+        
+        .edify-label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .edify-input {
+          padding: 0.75rem;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.5rem;
+          color: white;
+          font-size: 0.9375rem;
+          outline: none;
+          transition: all 0.2s;
+          
+          &:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(100, 100, 255, 0.5);
+          }
+          
+          &::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+          }
+          
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+        
+        .edify-error {
+          padding: 0.75rem;
+          background: rgba(255, 75, 75, 0.1);
+          border: 1px solid rgba(255, 75, 75, 0.3);
+          border-radius: 0.5rem;
+          color: #ff4b4b;
+          font-size: 0.875rem;
+        }
+        
+        .edify-submit-btn {
+          padding: 0.75rem;
+          background: linear-gradient(135deg, rgba(100, 100, 255, 0.8) 0%, rgba(200, 100, 255, 0.8) 100%);
+          border: none;
+          border-radius: 0.5rem;
+          color: white;
+          font-size: 0.9375rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          
+          &:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(100, 100, 255, 1) 0%, rgba(200, 100, 255, 1) 100%);
+            transform: translateY(-1px);
+          }
+          
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+        
+        .edify-divider {
+          position: relative;
+          text-align: center;
+          margin: 0.5rem 0;
+          
+          &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 100%;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+          }
+          
+          span {
+            position: relative;
+            padding: 0 0.75rem;
+            background: rgba(11, 10, 21, 0.95);
+            font-size: 0.8125rem;
+            color: rgba(255, 255, 255, 0.5);
+          }
+        }
+        
+        .edify-google-btn {
+          padding: 0.75rem;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 0.5rem;
+          color: rgba(0, 0, 0, 0.87);
+          font-size: 0.9375rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.625rem;
+          
+          &:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+          }
+          
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          
+          svg {
+            flex-shrink: 0;
+          }
+        }
+      `}
+    >
+      <div className='edify-login-header'>
+        <div className='edify-back-btn' onClick={onClose}>
+          <ChevronDownIcon size='1.125rem' style={{ transform: 'rotate(90deg)' }} />
+        </div>
+        <div className='edify-login-title'>Sign in to Edify</div>
+      </div>
+      
+      <div className='edify-login-subtitle'>
+        Sign in with your Edify account to access your items
+      </div>
+      
+      <form className='edify-login-form' onSubmit={handleSubmit}>
+        {error && (
+          <div className='edify-error'>{error}</div>
+        )}
+        
+        <div className='edify-form-group'>
+          <label className='edify-label'>Email Address</label>
+          <input
+            type='email'
+            className='edify-input'
+            placeholder='Enter your email'
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isLoading}
+            autoComplete='email'
+          />
+        </div>
+        
+        <div className='edify-form-group'>
+          <label className='edify-label'>Password</label>
+          <input
+            type='password'
+            className='edify-input'
+            placeholder='Enter your password'
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isLoading}
+            autoComplete='current-password'
+          />
+        </div>
+        
+        <button
+          type='submit'
+          className='edify-submit-btn'
+          disabled={isLoading}
+        >
+          {isLoading ? 'Signing in...' : 'Sign In'}
+        </button>
+        
+        <div className='edify-divider'>
+          <span>Or continue with</span>
+        </div>
+        
+        <button
+          type='button'
+          className='edify-google-btn'
+          onClick={handleGoogleSignin}
+          disabled={isLoading}
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17.64 9.20454C17.64 8.56636 17.5827 7.95272 17.4764 7.36363H9V10.845H13.8436C13.635 11.97 13.0009 12.9231 12.0477 13.5613V15.8195H14.9564C16.6582 14.2527 17.64 11.9454 17.64 9.20454Z" fill="#4285F4"/>
+            <path d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5613C11.2418 14.1013 10.2109 14.4204 9 14.4204C6.65591 14.4204 4.67182 12.8372 3.96409 10.71H0.957275V13.0418C2.43818 15.9831 5.48182 18 9 18Z" fill="#34A853"/>
+            <path d="M3.96409 10.71C3.78409 10.17 3.68182 9.59318 3.68182 9C3.68182 8.40682 3.78409 7.83 3.96409 7.29V4.95818H0.957275C0.347727 6.17318 0 7.54772 0 9C0 10.4523 0.347727 11.8268 0.957275 13.0418L3.96409 10.71Z" fill="#FBBC05"/>
+            <path d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957275 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" fill="#EA4335"/>
+          </svg>
+          Sign in with Google
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function EdifyItems({ world, onClose }) {
+  const [items, setItems] = useState([])
+  const [filteredItems, setFilteredItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedType, setSelectedType] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+  const span = 3
+  const gap = '0.5rem'
+
+  // Check authentication on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('edifyToken')
+      
+      if (!token) {
+        setShowLogin(true)
+        setLoading(false)
+        return
+      }
+
+      // Just verify token without fetching items
+      setIsAuthenticated(true)
+      setShowLogin(false)
+      setLoading(false)
+    }
+
+    checkAuth()
+  }, [])
+
+  // Fetch items when type is selected
+  useEffect(() => {
+    if (!selectedType || !isAuthenticated) return
+
+    const fetchItems = async () => {
+      const token = localStorage.getItem('edifyToken')
+      
+      try {
+        setLoading(true)
+        setError(null)
+        
+        // Build query parameters based on selected type
+        let queryParams = ''
+        if (selectedType === 'my-purchases') {
+          queryParams = '?purchasedOnly=true'
+        } else {
+          queryParams = `?type=${selectedType}`
+        }
+        
+        const response = await fetch(`/api/edify/items${queryParams}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Token is invalid, remove it and show login
+            localStorage.removeItem('edifyToken')
+            setIsAuthenticated(false)
+            setShowLogin(true)
+            return
+          }
+          throw new Error(`Failed to fetch items: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+        const itemsArray = data.items || []
+        setItems(itemsArray)
+      } catch (err) {
+        console.error('Error fetching Edify items:', err)
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchItems()
+  }, [selectedType, isAuthenticated])
+
+  const handleLoginSuccess = async () => {
+    setIsAuthenticated(true)
+    setShowLogin(false)
+  }
+
+  useEffect(() => {
+    let filtered = items
+
+    // Only filter by search query (type filtering is done server-side)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        item =>
+          item.title?.toLowerCase().includes(query) ||
+          item.description?.toLowerCase().includes(query) ||
+          item.tags?.some(tag => tag.toLowerCase().includes(query)) ||
+          item.type?.toLowerCase().includes(query) ||
+          item.category?.toLowerCase().includes(query)
+      )
+    }
+
+    setFilteredItems(filtered)
+  }, [searchQuery, items])
+
+  const handleItemClick = item => {
+    // TODO: Handle item click - download and add to world
+    console.log('Edify item clicked:', item)
+  }
+
+  // Show login page if not authenticated
+  if (showLogin && !isAuthenticated) {
+    return <EdifyLogin onClose={onClose} onLoginSuccess={handleLoginSuccess} />
+  }
+
+  if (loading) {
+    return (
+      <div
+        css={css`
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          color: rgba(255, 255, 255, 0.6);
+        `}
+      >
+        Loading items...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div
+        css={css`
+          padding: 1rem;
+          color: #ff4b4b;
+          text-align: center;
+        `}
+      >
+        Error: {error}
+      </div>
+    )
+  }
+
+  // Show type selection screen
+  if (!selectedType) {
+    return (
+      <div
+        className='edify-types'
+        css={css`
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          .edify-types-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+          }
+          .edify-back-btn {
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: rgba(255, 255, 255, 0.8);
+            &:hover {
+              background: rgba(255, 255, 255, 0.1);
+              border-color: rgba(255, 255, 255, 0.2);
+              color: white;
+            }
+          }
+          .edify-types-title {
+            flex: 1;
+            font-size: 1rem;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.9);
+          }
+          .edify-types-grid {
+            display: flex;
+            align-items: stretch;
+            flex-wrap: wrap;
+            gap: ${gap};
+          }
+          .edify-type-item {
+            flex-basis: calc((100% / ${span}) - (${gap} * (${span} - 1) / ${span}));
+            cursor: pointer;
+            transition: transform 0.2s;
+            &:hover {
+              transform: translateY(-2px);
+            }
+          }
+          .edify-type-box {
+            width: 100%;
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.7rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            &:hover {
+              background: rgba(255, 255, 255, 0.1);
+              border-color: rgba(255, 255, 255, 0.2);
+            }
+          }
+          .edify-type-icon {
+            font-size: 2rem;
+          }
+          .edify-type-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-align: center;
+          }
+          .edify-type-count {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+          }
+        `}
+      >
+        <div className='edify-types-header'>
+          <div className='edify-back-btn' onClick={onClose}>
+            <ChevronDownIcon size='1.125rem' style={{ transform: 'rotate(90deg)' }} />
+          </div>
+          <div className='edify-types-title'>Select Type</div>
+        </div>
+        <div className='edify-types-grid'>
+          {edifyTypes.map(type => (
+            <div className='edify-type-item' key={type.value} onClick={() => setSelectedType(type.value)}>
+              <div className='edify-type-box'>
+                <div className='edify-type-icon'>{type.icon}</div>
+                <div className='edify-type-label'>{type.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className='edify-items'
+      css={css`
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        .edify-header {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .edify-back-btn {
+          width: 2rem;
+          height: 2rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.5rem;
+          cursor: pointer;
+          transition: all 0.2s;
+          color: rgba(255, 255, 255, 0.8);
+          &:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: white;
+          }
+        }
+        .edify-search {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.5rem;
+          padding: 0.5rem 0.75rem;
+          gap: 0.5rem;
+          input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: white;
+            font-size: 0.9375rem;
+            &::placeholder {
+              color: #5d6077;
+            }
+            &::selection {
+              background-color: white;
+              color: rgba(0, 0, 0, 0.8);
+            }
+          }
+        }
+        .edify-list {
+          display: flex;
+          align-items: stretch;
+          flex-wrap: wrap;
+          gap: ${gap};
+        }
+        .edify-item {
+          flex-basis: calc((100% / ${span}) - (${gap} * (${span} - 1) / ${span}));
+          cursor: pointer;
+          transition: transform 0.2s;
+          &:hover {
+            transform: translateY(-2px);
+          }
+        }
+        .edify-item-image {
+          width: 100%;
+          aspect-ratio: 1;
+          background-color: #1c1d22;
+          background-size: cover;
+          background-position: center;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 0.7rem;
+          margin: 0 0 0.4rem;
+        }
+        .edify-item-name {
+          text-align: center;
+          font-size: 0.875rem;
+          font-weight: 500;
+          margin-bottom: 0.2rem;
+        }
+        .edify-item-type {
+          text-align: center;
+          font-size: 0.75rem;
+          color: rgba(255, 255, 255, 0.5);
+          text-transform: capitalize;
+        }
+        .edify-item-price {
+          text-align: center;
+          font-size: 0.75rem;
+          color: #4ade80;
+          margin-top: 0.2rem;
+        }
+        .edify-empty {
+          text-align: center;
+          padding: 2rem;
+          color: rgba(255, 255, 255, 0.5);
+        }
+      `}
+    >
+      <div className='edify-header'>
+        <div
+          className='edify-back-btn'
+          onClick={() => {
+            setSelectedType(null)
+            setSearchQuery('')
+          }}
+        >
+          <ChevronDownIcon size='1.125rem' style={{ transform: 'rotate(90deg)' }} />
+        </div>
+        <div className='edify-search'>
+          <SearchIcon size='1rem' />
+          <input
+            type='text'
+            placeholder='Search items...'
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {filteredItems.length === 0 ? (
+        <div className='edify-empty'>
+          {searchQuery ? 'No items found matching your search.' : 'No items available.'}
+        </div>
+      ) : (
+        <div className='edify-list'>
+          {filteredItems.map(item => (
+            <div className='edify-item' key={item._id} onClick={() => handleItemClick(item)}>
+              <div
+                className='edify-item-image'
+                css={css`
+                  background-image: url(${item.image});
+                `}
+              />
+              <div className='edify-item-name'>{item.title}</div>
+              <div className='edify-item-type'>{item.type}</div>
+              {item.priceUSD > 0 ? (
+                <div className='edify-item-price'>${item.priceUSD.toFixed(2)}</div>
+              ) : (
+                <div className='edify-item-price'>Free</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
