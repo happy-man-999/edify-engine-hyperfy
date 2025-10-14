@@ -21,6 +21,7 @@ import { cleaner } from './cleaner'
 const rootDir = path.join(__dirname, '../')
 const worldDir = path.join(rootDir, process.env.WORLD)
 const port = process.env.PORT
+const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
 
 // check envs
 if (!process.env.WORLD) {
@@ -182,7 +183,7 @@ fastify.post('/api/edify/login', async (req, reply) => {
     }
 
     // Forward login request to edifyengine backend
-    const response = await fetch('http://localhost:5000/api/auth/signin', {
+    const response = await fetch(`${edifyEngineServerUrl}/api/auth/signin`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -207,10 +208,9 @@ fastify.post('/api/edify/login', async (req, reply) => {
 // Google auth redirect endpoint
 fastify.get('/api/edify/google-auth', async (req, reply) => {
   // Redirect to edifyengine's Google OAuth with special parameter
-  const edifyBackendUrl = 'http://localhost:5000'
   const callbackUrl = encodeURIComponent(`${req.protocol}://${req.hostname}${req.hostname === 'localhost' ? ':' + (process.env.PORT || 3000) : ''}/api/edify/google-callback`)
   
-  return reply.redirect(`${edifyBackendUrl}/api/auth/google?from=hyperfy&callback=${callbackUrl}`)
+  return reply.redirect(`${edifyEngineServerUrl}/api/auth/google?from=hyperfy&callback=${callbackUrl}`)
 })
 
 // Google auth callback endpoint
@@ -279,7 +279,7 @@ fastify.get('/api/edify/items', async (req, reply) => {
 
     if (req.query.purchasedOnly === 'true') {
       // Use /api/user/purchases for purchased items
-      url = 'http://localhost:5000/api/user/purchases'
+      url = `${edifyEngineServerUrl}/api/user/purchases`
       
       response = await fetch(url, {
         method: 'GET',
@@ -310,7 +310,7 @@ fastify.get('/api/edify/items', async (req, reply) => {
       }
 
       const queryString = queryParams.toString()
-      url = `http://localhost:5000/api/items${queryString ? '?' + queryString : ''}`
+      url = `${edifyEngineServerUrl}/api/items${queryString ? '?' + queryString : ''}`
 
       response = await fetch(url, {
         method: 'GET',

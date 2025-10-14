@@ -1468,9 +1468,52 @@ function EdifyItems({ world, onClose }) {
     setFilteredItems(filtered)
   }, [searchQuery, items])
 
-  const handleItemClick = item => {
-    // TODO: Handle item click - download and add to world
-    console.log('Edify item clicked:', item)
+  const handleItemClick = async item => {
+    if (item.downloadAssets) {
+      try {
+        console.log('Downloading .hyp file from:', item.downloadAssets)
+        
+        // Fetch the .hyp file from the URL
+        const response = await fetch(item.downloadAssets)
+        if (!response.ok) {
+          throw new Error(`Failed to download file: ${response.statusText}`)
+        }
+        
+        // Get the file as a blob
+        const blob = await response.blob()
+        
+        // Extract filename from URL or use item title
+        const urlParts = item.downloadAssets.split('/')
+        const filename = urlParts[urlParts.length - 1] || `${item.title || 'item'}.hyp`
+        
+        // Create a File object from the blob
+        const file = new File([blob], filename, { type: 'application/octet-stream' })
+        
+        // Enable builder mode
+        world.builder.toggle(true)
+        
+        // Get spawn transform (at reticle position)
+        const transform = world.builder.getSpawnTransform(true)
+        
+        // Add the app to the world
+        await world.builder.addApp(file, transform)
+        
+        console.log('Successfully added item to world:', item.title)
+        
+        // Close the sidebar after successful addition
+        onClose()
+      } catch (error) {
+        console.error('Error adding item to world:', error)
+        // Show user-facing error notification
+        alert(`Failed to add item to world: ${error.message}`)
+      }
+    }
+    else {
+      // Open Edify Engine store page in new tab for unpurchased items
+      const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
+      const storeUrl = `${edifyEngineUrl}/store?id=${item._id}`
+      window.open(storeUrl, '_blank')
+    }
   }
 
   // Show login page if not authenticated
@@ -1584,6 +1627,9 @@ function EdifyItems({ world, onClose }) {
             font-size: 0.875rem;
             font-weight: 500;
             text-align: center;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            padding: 0 0.5rem;
           }
           .edify-type-count {
             font-size: 0.75rem;
@@ -1695,6 +1741,13 @@ function EdifyItems({ world, onClose }) {
           font-size: 0.875rem;
           font-weight: 500;
           margin-bottom: 0.2rem;
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          line-height: 1.3;
         }
         .edify-item-type {
           text-align: center;
