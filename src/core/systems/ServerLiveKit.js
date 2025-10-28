@@ -17,10 +17,53 @@ export class ServerLiveKit extends System {
     this.wsUrl = process.env.LIVEKIT_WS_URL
     this.apiKey = process.env.LIVEKIT_API_KEY
     this.apiSecret = process.env.LIVEKIT_API_SECRET
-    this.enabled = this.wsUrl && this.apiKey && this.apiSecret
     this.modifiers = {} // [playerId] => Set({ level })
     this.levels = {} // [playerId] => level (disabled, spatial, global)
     this.muted = new Set()
+    // enabled will be set after async init
+    this.enabled = false
+  }
+
+  async init() {
+    // If API key or secret is missing, try to fetch from edify engine server
+    if (!this.apiKey || !this.apiSecret) {
+      const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+      try {
+        const response = await fetch(`${edifyEngineServerUrl}/api/hyperfy-keys`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.LIVEKIT_API_KEY && !this.apiKey) {
+            this.apiKey = data.LIVEKIT_API_KEY
+            console.log('[livekit] Fetched LIVEKIT_API_KEY from edify engine server')
+          }
+          if (data.LIVEKIT_API_SECRET && !this.apiSecret) {
+            this.apiSecret = data.LIVEKIT_API_SECRET
+            console.log('[livekit] Fetched LIVEKIT_API_SECRET from edify engine server')
+          }
+        } else {
+          console.warn('[livekit] Failed to fetch keys from edify engine server:', response.statusText)
+        }
+      } catch (error) {
+        console.warn('[livekit] Error fetching keys from edify engine server:', error.message)
+      }
+    }
+    
+    // Decide whether to enable or disable LiveKit after fetching keys
+    const hasWsUrl = !!this.wsUrl
+    const hasApiKey = !!this.apiKey
+    const hasApiSecret = !!this.apiSecret
+    
+    this.enabled = hasWsUrl && hasApiKey && hasApiSecret
+    
+    if (this.enabled) {
+      console.log('[livekit] LiveKit enabled - all required configuration present')
+    } else {
+      const missing = []
+      if (!hasWsUrl) missing.push('LIVEKIT_WS_URL')
+      if (!hasApiKey) missing.push('LIVEKIT_API_KEY')
+      if (!hasApiSecret) missing.push('LIVEKIT_API_SECRET')
+      console.warn(`[livekit] LiveKit disabled - missing required configuration: ${missing.join(', ')}`)
+    }
   }
 
   async serialize(playerId) {

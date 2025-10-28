@@ -40,6 +40,7 @@ export class ClientAudio extends System {
     if (!this.unlocked) {
       this.setupUnlockListener()
     }
+
   }
 
   ready(fn) {
@@ -142,3 +143,4 @@ export class ClientAudio extends System {
     this.queue = []
   }
 }
+

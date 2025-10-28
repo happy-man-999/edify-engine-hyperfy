@@ -26,6 +26,33 @@ export class ServerAI extends System {
     this.model = process.env.AI_MODEL || null
     this.effort = process.env.AI_EFFORT || 'minimal'
     this.apiKey = process.env.AI_API_KEY || null
+    this.client = null
+    this.enabled = false
+  }
+
+  async init({ assets }) {
+    this.assets = assets
+
+    // If API key is missing, try to fetch from edify engine server
+    if (!this.apiKey) {
+      const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+      try {
+        const response = await fetch(`${edifyEngineServerUrl}/api/hyperfy-keys`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.AI_API_KEY) {
+            this.apiKey = data.AI_API_KEY
+            console.log('[ai] Fetched AI_API_KEY from edify engine server')
+          }
+        } else {
+          console.warn('[ai] Failed to fetch keys from edify engine server:', response.statusText)
+        }
+      } catch (error) {
+        console.warn('[ai] Error fetching keys from edify engine server:', error.message)
+      }
+    }
+
+    // Initialize client after attempting to fetch keys
     if (this.provider && this.model && this.apiKey) {
       if (this.provider === 'openai') {
         this.client = new OpenAIClient(this.apiKey, this.model, this.effort)
@@ -50,10 +77,6 @@ export class ServerAI extends System {
       model: this.model,
       effort: this.effort,
     }
-  }
-
-  async init({ assets }) {
-    this.assets = assets
   }
 
   async onAction(action) {
