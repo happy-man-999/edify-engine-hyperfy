@@ -32,6 +32,7 @@ import {
   Volume2Icon,
   HammerIcon,
   CircleArrowRightIcon,
+  RotateCwIcon,
 } from 'lucide-react'
 import { cls } from './cls'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
@@ -621,8 +622,387 @@ function Prefs({ world, hidden }) {
           value={voice}
           onChange={voice => world.prefs.setVoice(voice)}
         />
+        <Group label='World Controls' />
+        <WorldControls world={world} />
       </div>
     </Pane>
+  )
+}
+
+function WorldControls({ world }) {
+  const [isRestarting, setIsRestarting] = useState(false)
+  const [isBackingUp, setIsBackingUp] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Handle token expiration - clear token and navigate to Edify sign in
+  const handleTokenExpiration = () => {
+    localStorage.removeItem('edifyToken')
+    world.ui.togglePane('add')
+    // Show login in Add section - this will be handled by the Add component
+    // which shows EdifyLogin when there's no token
+  }
+
+  // Helper to check response and handle token expiration
+  const checkResponseAndHandleToken = async (response) => {
+    if (response.status === 401) {
+      handleTokenExpiration()
+      throw new Error('Session expired. Please sign in again.')
+    }
+    return response
+  }
+
+  // Get dropletId from current domain
+  const getDropletId = async () => {
+    const token = localStorage.getItem('edifyToken')
+    if (!token) {
+      throw new Error('Not authenticated. Please log in to Edify Engine.')
+    }
+
+    const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
+    const hostname = window.location.hostname
+    
+    // Try to fetch user droplets and find matching one
+    try {
+      const response = await fetch(`${edifyEngineUrl}/api/user/droplets`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      await checkResponseAndHandleToken(response)
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch droplets')
+      }
+
+      const data = await response.json()
+      const droplets = data.droplets || []
+      
+      // Find droplet matching current domain
+      const currentDroplet = droplets.find(droplet => {
+        const subdomain = droplet.subdomain ? `${droplet.subdomain}.edifyengine.com` : null
+        const customDomain = droplet.customDomain
+        return (subdomain && hostname === subdomain) || (customDomain && hostname === customDomain)
+      })
+
+      if (!currentDroplet) {
+        throw new Error('Could not find droplet for current domain')
+      }
+
+      return currentDroplet.dropletId
+    } catch (error) {
+      console.error('Error getting droplet ID:', error)
+      throw error
+    }
+  }
+
+  const handleRestartClick = async () => {
+    if (isRestarting) return
+    
+    const confirmed = window.confirm('Are you sure you want to restart this world? This will temporarily take the world offline while it restarts.')
+    if (!confirmed) return
+    
+    setIsRestarting(true)
+    try {
+      const token = localStorage.getItem('edifyToken')
+      if (!token) {
+        alert('Not authenticated. Please log in to Edify Engine.')
+        return
+      }
+
+      const dropletId = await getDropletId()
+      const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
+      
+      const response = await fetch(`${edifyEngineUrl}/api/user/droplets/${dropletId}/restart`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      await checkResponseAndHandleToken(response)
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to restart droplet')
+      }
+
+      alert('Restart initiated! Your world is restarting.')
+    } catch (error) {
+      console.error('Error restarting world:', error)
+      alert('Restart failed: ' + error.message)
+      setIsRestarting(false)
+    }
+  }
+
+  const handleBackupClick = async () => {
+    if (isBackingUp) return
+    
+    const snapshotName = window.prompt('Enter a name for the snapshot:', `backup-${new Date().toISOString().slice(0, 10)}`)
+    if (!snapshotName) return
+    
+    setIsBackingUp(true)
+    try {
+      const token = localStorage.getItem('edifyToken')
+      if (!token) {
+        alert('Not authenticated. Please log in to Edify Engine.')
+        return
+      }
+
+      const dropletId = await getDropletId()
+      const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
+      
+      const response = await fetch(`${edifyEngineUrl}/api/user/droplets/${dropletId}/backup`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ snapshotName })
+      })
+
+      await checkResponseAndHandleToken(response)
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to backup droplet')
+      }
+
+      alert('Snapshot creation initiated! Your droplet will be powered off, snapshotted, and powered back on.')
+    } catch (error) {
+      console.error('Error creating backup:', error)
+      alert('Backup failed: ' + error.message)
+    } finally {
+      setIsBackingUp(false)
+    }
+  }
+
+  const handleEditorClick = () => {
+    const hostname = window.location.hostname
+    const editorUrl = `https://${hostname}/editor`
+    window.open(editorUrl, '_blank')
+  }
+
+  const handleDeleteClick = async () => {
+    if (isDeleting) return
+    
+    const confirmed = window.confirm('Are you sure you want to delete this world? This action cannot be undone and will permanently remove the world and all its data.')
+    if (!confirmed) return
+    
+    setIsDeleting(true)
+    try {
+      const token = localStorage.getItem('edifyToken')
+      if (!token) {
+        alert('Not authenticated. Please log in to Edify Engine.')
+        return
+      }
+
+      const dropletId = await getDropletId()
+      const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
+      
+      const response = await fetch(`${edifyEngineUrl}/api/admin/droplets/${dropletId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      await checkResponseAndHandleToken(response)
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete droplet')
+      }
+
+      alert('World deleted successfully.')
+      // Optionally redirect to home
+      window.location.href = edifyEngineUrl
+    } catch (error) {
+      console.error('Error deleting world:', error)
+      alert('Delete failed: ' + error.message)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  return (
+    <div
+      css={css`
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0 1rem;
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}
+    >
+      <div
+        css={css`
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        `}
+      >
+        <button
+          onClick={handleRestartClick}
+          disabled={isRestarting}
+          css={css`
+            flex: 1;
+            min-width: 6rem;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            &:hover:not(:disabled) {
+              background: rgba(255, 255, 255, 0.1);
+              border-color: rgba(255, 255, 255, 0.2);
+            }
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          `}
+          title="Restart World"
+        >
+          <RotateCwIcon 
+            size='1rem' 
+            css={css`
+              ${isRestarting ? 'animation: spin 1s linear infinite;' : ''}
+            `}
+          />
+          Restart
+        </button>
+      </div>
+      <div
+        css={css`
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        `}
+      >
+        <button
+          onClick={handleBackupClick}
+          disabled={isBackingUp}
+          css={css`
+            flex: 1;
+            min-width: 6rem;
+            padding: 0.5rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            &:hover:not(:disabled) {
+              background: rgba(59, 130, 246, 0.2);
+              border-color: rgba(59, 130, 246, 0.4);
+            }
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          `}
+          title="Create Backup"
+        >
+          <SaveIcon 
+            size='1rem' 
+            css={css`
+              ${isBackingUp ? 'animation: spin 1s linear infinite;' : ''}
+            `}
+          />
+          Backup
+        </button>
+        <button
+          onClick={handleEditorClick}
+          css={css`
+            flex: 1;
+            min-width: 6rem;
+            padding: 0.5rem;
+            background: rgba(147, 51, 234, 0.1);
+            border: 1px solid rgba(147, 51, 234, 0.3);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            &:hover {
+              background: rgba(147, 51, 234, 0.2);
+              border-color: rgba(147, 51, 234, 0.4);
+            }
+          `}
+          title="Open Editor"
+        >
+          <CodeIcon size='1rem' />
+          Editor
+        </button>
+        <button
+          onClick={handleDeleteClick}
+          disabled={isDeleting}
+          css={css`
+            flex: 1;
+            min-width: 6rem;
+            padding: 0.5rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            &:hover:not(:disabled) {
+              background: rgba(239, 68, 68, 0.2);
+              border-color: rgba(239, 68, 68, 0.4);
+            }
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          `}
+          title="Delete World"
+        >
+          <Trash2Icon 
+            size='1rem' 
+            css={css`
+              ${isDeleting ? 'animation: spin 1s linear infinite;' : ''}
+            `}
+          />
+          Delete
+        </button>
+      </div>
+    </div>
   )
 }
 
