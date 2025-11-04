@@ -33,6 +33,8 @@ import {
   HammerIcon,
   CircleArrowRightIcon,
   RotateCwIcon,
+  EyeIcon,
+  EyeOffIcon,
 } from 'lucide-react'
 import { cls } from './cls'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
@@ -622,8 +624,6 @@ function Prefs({ world, hidden }) {
           value={voice}
           onChange={voice => world.prefs.setVoice(voice)}
         />
-        <Group label='World Controls' />
-        <WorldControls world={world} />
       </div>
     </Pane>
   )
@@ -1163,9 +1163,175 @@ function World({ world, hidden }) {
             world.network.send('spawnModified', 'clear')
           }}
         /> */}
+          <Group label='AI API Key' />
+          <AIApiKeyInput />
+          <Group label='World Controls' />
+          <WorldControls world={world} />
         </div>
       </div>
     </Pane>
+  )
+}
+
+function AIApiKeyInput() {
+  const [aiApiKey, setAiApiKey] = useState('')
+  const [isLoadingAiKey, setIsLoadingAiKey] = useState(false)
+  const [isSavingAiKey, setIsSavingAiKey] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
+
+  // Fetch AI API key on mount
+  useEffect(() => {
+    const fetchAiApiKey = async () => {
+      setIsLoadingAiKey(true)
+      try {
+        const response = await fetch('/api/ai-api-key')
+        if (response.ok) {
+          const data = await response.json()
+          setAiApiKey(data.AI_API_KEY || '')
+        }
+      } catch (error) {
+        console.error('Error fetching AI API key:', error)
+      } finally {
+        setIsLoadingAiKey(false)
+      }
+    }
+    fetchAiApiKey()
+  }, [])
+
+  // Save AI API key
+  const handleSaveAiApiKey = async () => {
+    setIsSavingAiKey(true)
+    try {
+      const response = await fetch('/api/ai-api-key', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ apiKey: aiApiKey })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message || 'AI API key saved successfully')
+      } else {
+        const data = await response.json()
+        alert('Failed to save: ' + (data.message || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Error saving AI API key:', error)
+      alert('Failed to save AI API key: ' + error.message)
+    } finally {
+      setIsSavingAiKey(false)
+    }
+  }
+
+  return (
+    <div
+      css={css`
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0 1rem;
+      `}
+    >
+      <div
+        css={css`
+          display: flex;
+          gap: 0.5rem;
+          align-items: center;
+        `}
+      >
+        <div
+          css={css`
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+          `}
+        >
+          <input
+            type={showApiKey ? 'text' : 'password'}
+            value={aiApiKey}
+            onChange={(e) => setAiApiKey(e.target.value)}
+            placeholder={isLoadingAiKey ? 'Loading...' : 'Enter AI API Key'}
+            disabled={isLoadingAiKey || isSavingAiKey}
+            css={css`
+              flex: 1;
+              padding: 0.5rem;
+              padding-right: 2.5rem;
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 0.5rem;
+              color: white;
+              font-size: 0.875rem;
+              &::placeholder {
+                color: rgba(255, 255, 255, 0.5);
+              }
+              &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+              }
+              &:focus {
+                outline: none;
+                border-color: rgba(255, 255, 255, 0.3);
+              }
+            `}
+          />
+          <button
+            type="button"
+            onClick={() => setShowApiKey(!showApiKey)}
+            disabled={isLoadingAiKey || isSavingAiKey}
+            css={css`
+              position: absolute;
+              right: 0.5rem;
+              background: transparent;
+              border: none;
+              color: rgba(255, 255, 255, 0.6);
+              cursor: pointer;
+              padding: 0.25rem;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              transition: color 0.2s;
+              &:hover:not(:disabled) {
+                color: rgba(255, 255, 255, 0.9);
+              }
+              &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+              }
+            `}
+            title={showApiKey ? 'Hide API key' : 'Show API key'}
+          >
+            {showApiKey ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
+          </button>
+        </div>
+        <button
+          onClick={handleSaveAiApiKey}
+          disabled={isSavingAiKey || isLoadingAiKey}
+          css={css`
+            padding: 0.5rem 1rem;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            &:hover:not(:disabled) {
+              background: rgba(59, 130, 246, 0.3);
+              border-color: rgba(59, 130, 246, 0.4);
+            }
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          `}
+        >
+          {isSavingAiKey ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -1364,36 +1530,38 @@ function Add({ world, hidden }) {
           {showEdify ? (
             <EdifyItems world={world} onClose={() => setShowEdify(false)} />
           ) : (
-            <div className='add-items'>
-              <div className='add-item' onClick={() => setShowEdify(true)}>
-                <div
-                  className='add-item-image'
-                  css={css`
-                    background: linear-gradient(135deg, rgba(100, 100, 255, 0.2) 0%, rgba(200, 100, 255, 0.2) 100%);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 1.5rem;
-                    font-weight: 600;
-                    color: rgba(255, 255, 255, 0.8);
-                  `}
-                >
-                  E
-                </div>
-                <div className='add-item-name'>Edify</div>
-              </div>
-              {collection.blueprints.map(blueprint => (
-                <div className='add-item' key={blueprint.id} onClick={() => add(blueprint)}>
+            <>
+              <div className='add-items'>
+                <div className='add-item' onClick={() => setShowEdify(true)}>
                   <div
                     className='add-item-image'
                     css={css`
-                      background-image: url(${world.resolveURL(blueprint.image?.url)});
+                      background: linear-gradient(135deg, rgba(100, 100, 255, 0.2) 0%, rgba(200, 100, 255, 0.2) 100%);
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      font-size: 1.5rem;
+                      font-weight: 600;
+                      color: rgba(255, 255, 255, 0.8);
                     `}
-                  ></div>
-                  <div className='add-item-name'>{blueprint.name}</div>
+                  >
+                    E
+                  </div>
+                  <div className='add-item-name'>Edify</div>
                 </div>
-              ))}
-            </div>
+                {collection.blueprints.map(blueprint => (
+                  <div className='add-item' key={blueprint.id} onClick={() => add(blueprint)}>
+                    <div
+                      className='add-item-image'
+                      css={css`
+                        background-image: url(${world.resolveURL(blueprint.image?.url)});
+                      `}
+                    ></div>
+                    <div className='add-item-name'>{blueprint.name}</div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

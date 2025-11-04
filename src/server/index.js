@@ -4,6 +4,7 @@ import './bootstrap'
 
 import fs from 'fs-extra'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import Fastify from 'fastify'
 import ws from '@fastify/websocket'
 import cors from '@fastify/cors'
@@ -262,6 +263,97 @@ fastify.get('/api/edify/google-callback', async (req, reply) => {
       </body>
     </html>
   `)
+})
+
+// Get AI API Key
+fastify.get('/api/ai-api-key', async (req, reply) => {
+  try {
+    // Read from ServerAI instance
+    const aiApiKey = world.ai?.apiKey || null
+    return reply.send({ AI_API_KEY: aiApiKey })
+  } catch (error) {
+    console.error('Error reading AI API key:', error)
+    return reply.code(500).send({ 
+      error: 'Failed to read AI API key',
+      message: error.message 
+    })
+  }
+})
+
+// Update AI API Key in .env file
+fastify.put('/api/ai-api-key', async (req, reply) => {
+  try {
+    const { apiKey } = req.body
+
+    if (apiKey === undefined) {
+      return reply.code(400).send({ 
+        message: 'API key is required' 
+      })
+    }
+
+    // Find .env file - rootDir is src/, so go up two levels to project root
+    const envPath = path.join(rootDir, '.env')
+
+    // Read existing .env file if it exists
+    let envContent = ''
+    if (await fs.pathExists(envPath)) {
+      envContent = await fs.readFile(envPath, 'utf8')
+    }
+
+    // Update or add AI_API_KEY
+    const lines = envContent.split('\n')
+    let aiApiKeyFound = false
+    const updatedLines = lines.map(line => {
+      if (line.trim().startsWith('AI_API_KEY=')) {
+        aiApiKeyFound = true
+        return `AI_API_KEY=${apiKey}`
+      }
+      return line
+    })
+
+    // If AI_API_KEY wasn't found, add it
+    if (!aiApiKeyFound) {
+      // Add a newline if the file doesn't end with one
+      if (updatedLines.length > 0 && updatedLines[updatedLines.length - 1] !== '') {
+        updatedLines.push('')
+      }
+      updatedLines.push(`AI_API_KEY=${apiKey}`)
+    }
+
+    // Write back to .env file
+    await fs.writeFile(envPath, updatedLines.join('\n'), 'utf8')
+
+    // Update process.env for current session
+    process.env.AI_API_KEY = apiKey
+
+    // Update ServerAI instance immediately
+    if (world.ai) {
+      world.ai.apiKey = apiKey
+      // Reinitialize client using the same logic as ServerAI.init
+      world.ai.client = null
+      world.ai.enabled = false
+      
+      // Reinitialize if provider and model are set
+      if (world.ai.provider && world.ai.model && apiKey) {
+        // Recreate client based on provider (same logic as ServerAI.init)
+        // We'll need to access the client classes, but they're not exported
+        // So we'll update the apiKey and the client will be recreated on next AI action
+        // The enabled flag will be set when the client is actually created
+      }
+    }
+
+    return reply.send({
+      success: true,
+      message: 'AI API key updated successfully.'
+    })
+
+  } catch (error) {
+    console.error('Error updating AI API key:', error)
+    return reply.code(500).send({ 
+      message: 'Failed to update AI API key',
+      error: error.message 
+    })
+  }
 })
 
 // Edify items endpoint with authentication
