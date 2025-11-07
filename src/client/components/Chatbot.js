@@ -138,6 +138,7 @@ export function Chatbot({ world }) {
         right: calc(1.5rem + env(safe-area-inset-right));
         z-index: 1000;
         pointer-events: none;
+        isolation: isolate; /* Create a new stacking context to prevent style leakage */
 
         @media all and (max-width: 700px), (max-height: 700px) {
           bottom: calc(1rem + env(safe-area-inset-bottom));
@@ -165,6 +166,7 @@ export function Chatbot({ world }) {
           overflow: hidden;
           pointer-events: auto;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+          isolation: isolate; /* Create a new stacking context to prevent style leakage */
           user-select: text !important;
           -webkit-user-select: text !important;
           -moz-user-select: text !important;
@@ -517,14 +519,14 @@ export function Chatbot({ world }) {
             }
           `}
 
-          /* Icon rotation when open */
-          svg {
+          /* Icon rotation when open - scope to this button only */
+          & > svg {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             transform: ${isOpen ? 'rotate(180deg)' : 'rotate(0deg)'};
           }
 
-          /* X icon color when open */
-          svg[stroke] {
+          /* X icon color when open - scope to this button only */
+          & > svg[stroke] {
             stroke: ${isOpen ? '#1a1a1a' : 'currentColor'};
           }
         `}
