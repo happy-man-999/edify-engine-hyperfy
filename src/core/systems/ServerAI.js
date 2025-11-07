@@ -89,6 +89,8 @@ export class ServerAI extends System {
       this.edit(action)
     } else if (action.name === 'fix') {
       this.fix(action)
+    } else if (action.name === 'chat') {
+      this.chat(action)
     }
   }
 
@@ -206,6 +208,39 @@ export class ServerAI extends System {
     this.world.network.send('blueprintModified', change)
     this.world.network.dirtyBlueprints.add(change.id)
   }
+
+  async chat({ messageId, message, userId, socketId }) {
+    console.log('[ai] chatbot message...')
+    if (!this.enabled || !this.client) {
+      // AI is not enabled, send error response
+      this.world.network.sendTo(socketId, 'chatResponse', {
+        messageId,
+        response: 'AI assistant is not available. Please check server configuration.',
+        userId,
+        error: true,
+      })
+      return
+    }
+    try {
+      const response = await this.client.chat(message)
+      console.log(response)
+      // Send response back to the specific client
+      this.world.network.sendTo(socketId, 'chatResponse', {
+        messageId,
+        response,
+        userId,
+      })
+    } catch (error) {
+      console.error('[ai] chat error:', error)
+      // Send error response back to the specific client
+      this.world.network.sendTo(socketId, 'chatResponse', {
+        messageId,
+        response: 'Sorry, I encountered an error. Please try again.',
+        userId,
+        error: true,
+      })
+    }
+  }
 }
 
 class OpenAIClient {
@@ -276,6 +311,23 @@ class OpenAIClient {
       input: `Please classify the following prompt:\n\n"${prompt}"`,
     })
     return resp.output_text
+  }
+
+  async chat(message) {
+    const resp = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+        },
+        {
+          role: 'user',
+          content: message,
+        },
+      ],
+    })
+    return resp.choices[0].message.content
   }
 }
 
@@ -355,6 +407,21 @@ class AnthropicClient {
         {
           role: 'user',
           content: `Please classify the following prompt:\n\n"${prompt}"`,
+        },
+      ],
+    })
+    return resp.content[0].text
+  }
+
+  async chat(message) {
+    const resp = await this.client.messages.create({
+      model: this.model,
+      max_tokens: this.maxTokens,
+      system: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+      messages: [
+        {
+          role: 'user',
+          content: message,
         },
       ],
     })
@@ -457,6 +524,22 @@ class Comput3Client {
         {
           role: 'user',
           content: `Please classify the following prompt:\n\n"${prompt}"`,
+        },
+      ],
+    })
+  }
+
+  async chat(message) {
+    return await this.exec({
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+        },
+        {
+          role: 'user',
+          content: message,
         },
       ],
     })
@@ -588,6 +671,32 @@ class XAIClient {
     const data = await resp.json()
     return data.choices[0].message.content
   }
+
+  async chat(message) {
+    const resp = await fetch(this.url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        stream: false,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+          },
+          {
+            role: 'user',
+            content: message,
+          },
+        ],
+      }),
+    })
+    const data = await resp.json()
+    return data.choices[0].message.content
+  }
 }
 
 class GoogleClient {
@@ -712,6 +821,31 @@ class GoogleClient {
     })
     const data = await resp.json()
     // console.log(JSON.stringify(data, null, 2))
+    return data.candidates[0].content.parts[0].text
+  }
+
+  async chat(message) {
+    const resp = await fetch(this.url, {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': this.apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: {
+            text: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+          },
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: message }],
+          },
+        ],
+      }),
+    })
+    const data = await resp.json()
     return data.candidates[0].content.parts[0].text
   }
 }

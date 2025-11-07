@@ -8,6 +8,7 @@ const names = [
   'command',
   'chatAdded',
   'chatCleared',
+  'chatResponse',
   'blueprintAdded',
   'blueprintModified',
   'entityAdded',

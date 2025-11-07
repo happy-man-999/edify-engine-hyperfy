@@ -157,6 +157,10 @@ export class ClientNetwork extends System {
     this.world.chat.clear()
   }
 
+  onChatResponse = data => {
+    this.world.emit('chatResponse', data)
+  }
+
   onBlueprintAdded = blueprint => {
     this.world.blueprints.add(blueprint)
   }

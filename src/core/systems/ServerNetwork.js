@@ -555,10 +555,18 @@ export class ServerNetwork extends System {
   }
 
   onAi = (socket, action) => {
-    if (!socket.player.isBuilder()) {
-      return console.error('player attempted to use ai but they are not a builder')
+    // Allow chat action for all users, but require builder for other AI actions
+    if (action.name === 'chat') {
+      // Add socketId and userId to chat action for response routing
+      action.socketId = socket.id
+      action.userId = socket.player?.data?.id || socket.id
+      this.world.ai.onAction(action)
+    } else {
+      if (!socket.player.isBuilder()) {
+        return console.error('player attempted to use ai but they are not a builder')
+      }
+      this.world.ai.onAction(action)
     }
-    this.world.ai.onAction(action)
   }
 
   onPing = (socket, time) => {
