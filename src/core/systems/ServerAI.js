@@ -319,7 +319,7 @@ class OpenAIClient {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+          content: 'You are a helpful assistant integrated into the Edify virtual world platform. Be friendly, concise, and helpful.',
         },
         {
           role: 'user',
@@ -417,7 +417,7 @@ class AnthropicClient {
     const resp = await this.client.messages.create({
       model: this.model,
       max_tokens: this.maxTokens,
-      system: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+      system: 'You are a helpful assistant integrated into the Edify virtual world platform. Be friendly, concise, and helpful.',
       messages: [
         {
           role: 'user',
@@ -535,7 +535,7 @@ class Comput3Client {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+          content: 'You are a helpful assistant integrated into the Edify virtual world platform. Be friendly, concise, and helpful.',
         },
         {
           role: 'user',
@@ -685,7 +685,7 @@ class XAIClient {
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+            content: 'You are a helpful assistant integrated into the Edify virtual world platform. Be friendly, concise, and helpful.',
           },
           {
             role: 'user',
@@ -834,7 +834,7 @@ class GoogleClient {
       body: JSON.stringify({
         system_instruction: {
           parts: {
-            text: 'You are a helpful assistant integrated into the Edify virtual world platform, which is Hyperfy world. Be friendly, concise, and helpful.',
+            text: 'You are a helpful assistant integrated into the Edify virtual world platform. Be friendly, concise, and helpful.',
           },
         },
         contents: [
