@@ -142,7 +142,8 @@ export function Chatbot({ world }) {
         isolation: isolate; /* Create a new stacking context to prevent style leakage */
 
         @media all and (max-width: 700px), (max-height: 700px) {
-          bottom: calc(1rem + env(safe-area-inset-bottom));
+          top: calc(1rem + env(safe-area-inset-top));
+          bottom: auto;
           right: calc(1rem + env(safe-area-inset-right));
         }
       `}
@@ -181,9 +182,11 @@ export function Chatbot({ world }) {
             transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s;
 
           @media all and (max-width: 700px), (max-height: 700px) {
-            width: calc(100vw - 2rem);
-            height: calc(100vh - 6rem);
-            max-height: calc(100vh - 6rem);
+            top: 4.5rem;
+            bottom: auto;
+            width: min(70vw, calc(100vw - 2rem));
+            height: 70vh;
+            max-height: 70vh;
           }
         `}
       >
