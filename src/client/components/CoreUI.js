@@ -31,6 +31,8 @@ export function CoreUI({ world }) {
   const [disconnected, setDisconnected] = useState(false)
   const [apps, setApps] = useState(false)
   const [kicked, setKicked] = useState(null)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [showDiscountModal, setShowDiscountModal] = useState(false)
   useEffect(() => {
     world.on('ready', setReady)
     world.on('player', setPlayer)
@@ -82,6 +84,80 @@ export function CoreUI({ world }) {
       world.prefs.off('change', onChange)
     }
   }, [])
+
+  // Show email modal when world is ready and user hasn't entered email
+  useEffect(() => {
+    if (ready) {
+      const hasEnteredEmail = localStorage.getItem('edify_demo_email_entered')
+      if (!hasEnteredEmail) {
+        setShowEmailModal(true)
+      }
+    }
+  }, [ready])
+
+  // Show discount modal when user exits
+  useEffect(() => {
+    let wasHidden = false
+    let hideTimer = null
+
+    const handleVisibilityChange = () => {
+      const hasEnteredEmail = localStorage.getItem('edify_demo_email_entered')
+      const hasSeenDiscount = sessionStorage.getItem('edify_discount_seen')
+      
+      if (document.hidden) {
+        // Page became hidden - user is leaving/switching tabs
+        wasHidden = true
+        // If user has entered email and hasn't seen discount, show it when they return
+        if (hasEnteredEmail && !hasSeenDiscount) {
+          sessionStorage.setItem('edify_should_show_discount', 'true')
+        }
+      } else if (wasHidden) {
+        // Page became visible again
+        wasHidden = false
+        // Show discount modal if conditions are met
+        if (hasEnteredEmail && !hasSeenDiscount) {
+          const shouldShow = sessionStorage.getItem('edify_should_show_discount')
+          if (shouldShow === 'true') {
+            // Small delay to ensure smooth transition
+            hideTimer = setTimeout(() => {
+              setShowDiscountModal(true)
+              sessionStorage.removeItem('edify_should_show_discount')
+            }, 500)
+          }
+        }
+      }
+    }
+
+    const handleBeforeUnload = () => {
+      const hasEnteredEmail = localStorage.getItem('edify_demo_email_entered')
+      const hasSeenDiscount = sessionStorage.getItem('edify_discount_seen')
+      if (hasEnteredEmail && !hasSeenDiscount) {
+        // Mark that we should show discount when they return
+        sessionStorage.setItem('edify_should_show_discount', 'true')
+      }
+    }
+
+    // Check if we should show discount on page load (user returned after leaving)
+    const shouldShowDiscount = sessionStorage.getItem('edify_should_show_discount')
+    const hasEnteredEmail = localStorage.getItem('edify_demo_email_entered')
+    const hasSeenDiscount = sessionStorage.getItem('edify_discount_seen')
+    if (shouldShowDiscount === 'true' && hasEnteredEmail && !hasSeenDiscount && ready) {
+      // Show after a delay when world is ready
+      setTimeout(() => {
+        setShowDiscountModal(true)
+        sessionStorage.removeItem('edify_should_show_discount')
+      }, 2000)
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (hideTimer) clearTimeout(hideTimer)
+    }
+  }, [ready])
   return (
     <div
       ref={ref}
@@ -107,6 +183,8 @@ export function CoreUI({ world }) {
       {ready && isTouch && <TouchBtns world={world} />}
       {ready && isTouch && <TouchStick world={world} />}
       {confirm && <Confirm options={confirm} />}
+      {showEmailModal && <EmailCaptureModal onClose={() => setShowEmailModal(false)} />}
+      {showDiscountModal && <DiscountOfferModal onClose={() => setShowDiscountModal(false)} />}
       <div id='core-ui-portal' />
     </div>
   )
@@ -1323,6 +1401,320 @@ function Confirm({ options }) {
           <div className='confirm-action' onClick={options.cancel}>
             <span>{options.cancelText || 'Cancel'}</span>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EmailCaptureModal({ onClose }) {
+  const [email, setEmail] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError(null)
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!email || !emailRegex.test(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      // Try to send email to API if available, otherwise just store locally
+      try {
+        const response = await fetch('https://edifyengine.com/api/demo-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to submit email')
+        }
+      } catch (apiError) {
+        // If API call fails, just store locally
+        console.log('API call failed, storing locally:', apiError)
+      }
+
+      // Store in localStorage to track that user has entered email
+      localStorage.setItem('edify_demo_email_entered', 'true')
+      localStorage.setItem('edify_demo_email', email)
+
+      onClose()
+    } catch (err) {
+      setError('Failed to submit email. Please try again.')
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      className='email-capture-modal'
+      css={css`
+        position: absolute;
+        inset: 0;
+        padding: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(5px);
+        .email-modal-dialog {
+          pointer-events: auto;
+          background: rgba(11, 10, 21, 0.95);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 1.5rem;
+          backdrop-filter: blur(10px);
+          width: 100%;
+          max-width: 28rem;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        .email-modal-content {
+          padding: 2rem;
+        }
+        .email-modal-headline {
+          font-size: 1.75rem;
+          font-weight: 600;
+          text-align: center;
+          margin: 0 0 0.75rem;
+          line-height: 1.2;
+        }
+        .email-modal-subheading {
+          text-align: center;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 1rem;
+          line-height: 1.5;
+          margin: 0 0 2rem;
+        }
+        .email-modal-form {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .email-modal-input {
+          padding: 0.875rem 1rem;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.75rem;
+          color: white;
+          font-size: 1rem;
+          outline: none;
+          transition: all 0.2s;
+          &::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+          }
+          &:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(100, 100, 255, 0.5);
+          }
+        }
+        .email-modal-error {
+          color: #ff4b4b;
+          font-size: 0.875rem;
+          text-align: center;
+          margin: -0.5rem 0 0;
+        }
+        .email-modal-button {
+          padding: 0.875rem 1.5rem;
+          background: linear-gradient(135deg, rgba(100, 100, 255, 0.9) 0%, rgba(200, 100, 255, 0.9) 100%);
+          border: none;
+          border-radius: 0.75rem;
+          color: white;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          &:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(100, 100, 255, 1) 0%, rgba(200, 100, 255, 1) 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(100, 100, 255, 0.4);
+          }
+          &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+          }
+        }
+      `}
+      onClick={(e) => {
+        if (e.target.className === 'email-capture-modal') {
+          // Allow closing by clicking outside, but only if not submitting
+          if (!isSubmitting) {
+            onClose()
+          }
+        }
+      }}
+    >
+      <div className='email-modal-dialog' onClick={(e) => e.stopPropagation()}>
+        <div className='email-modal-content'>
+          <h2 className='email-modal-headline'>Unlock the Demo World</h2>
+          <p className='email-modal-subheading'>
+            Enter your email to test Edify's tools and features - no account required.
+          </p>
+          <form className='email-modal-form' onSubmit={handleSubmit}>
+            <input
+              type='email'
+              className='email-modal-input'
+              placeholder='Enter your email'
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
+              autoFocus
+            />
+            {error && <div className='email-modal-error'>{error}</div>}
+            <button type='submit' className='email-modal-button' disabled={isSubmitting}>
+              {isSubmitting ? 'Submitting...' : 'Enter'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DiscountOfferModal({ onClose }) {
+  const handleClaimOffer = () => {
+    sessionStorage.setItem('edify_discount_seen', 'true')
+    window.location.href = 'https://edifyengine.com/signup'
+  }
+
+  return (
+    <div
+      className='discount-offer-modal'
+      css={css`
+        position: absolute;
+        inset: 0;
+        padding: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(5px);
+        .discount-modal-dialog {
+          pointer-events: auto;
+          background: rgba(11, 10, 21, 0.95);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 1.5rem;
+          backdrop-filter: blur(10px);
+          width: 100%;
+          max-width: 28rem;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        .discount-modal-content {
+          padding: 2rem;
+        }
+        .discount-modal-badge {
+          display: inline-block;
+          background: linear-gradient(135deg, rgba(255, 200, 0, 0.2) 0%, rgba(255, 150, 0, 0.2) 100%);
+          border: 1px solid rgba(255, 200, 0, 0.3);
+          border-radius: 0.5rem;
+          padding: 0.375rem 0.75rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #ffc800;
+          margin: 0 auto 1rem;
+          display: block;
+          text-align: center;
+          width: fit-content;
+        }
+        .discount-modal-headline {
+          font-size: 1.75rem;
+          font-weight: 600;
+          text-align: center;
+          margin: 0 0 0.75rem;
+          line-height: 1.2;
+        }
+        .discount-modal-subheading {
+          text-align: center;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 1rem;
+          line-height: 1.5;
+          margin: 0 0 2rem;
+        }
+        .discount-modal-price {
+          text-align: center;
+          margin: 0 0 1.5rem;
+          .price-amount {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #4ade80;
+            margin: 0 0 0.25rem;
+          }
+          .price-note {
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.5);
+          }
+        }
+        .discount-modal-button {
+          width: 100%;
+          padding: 0.875rem 1.5rem;
+          background: linear-gradient(135deg, rgba(100, 100, 255, 0.9) 0%, rgba(200, 100, 255, 0.9) 100%);
+          border: none;
+          border-radius: 0.75rem;
+          color: white;
+          font-size: 1rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          &:hover {
+            background: linear-gradient(135deg, rgba(100, 100, 255, 1) 0%, rgba(200, 100, 255, 1) 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(100, 100, 255, 0.4);
+          }
+        }
+        .discount-modal-close {
+          position: absolute;
+          top: 1rem;
+          right: 1rem;
+          width: 2rem;
+          height: 2rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.5rem;
+          cursor: pointer;
+          color: rgba(255, 255, 255, 0.7);
+          transition: all 0.2s;
+          &:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+          }
+        }
+      `}
+      onClick={(e) => {
+        if (e.target.className === 'discount-offer-modal') {
+          onClose()
+        }
+      }}
+    >
+      <div className='discount-modal-dialog' onClick={(e) => e.stopPropagation()}>
+        <div className='discount-modal-content' style={{ position: 'relative' }}>
+          <div className='discount-modal-close' onClick={onClose}>
+            ×
+          </div>
+          <div className='discount-modal-badge'>10% off Starter Annual</div>
+          <h2 className='discount-modal-headline'>Save 10% and Go Beyond the Demo</h2>
+          <p className='discount-modal-subheading'>
+            Unlock Full Access for $252 - Regular monthly: $29/mo → $348/year
+          </p>
+          <div className='discount-modal-price'>
+            <div className='price-amount'>$252/year</div>
+            <div className='price-note'>Save $96 compared to monthly</div>
+          </div>
+          <button className='discount-modal-button' onClick={handleClaimOffer}>
+            Claim Offer
+          </button>
         </div>
       </div>
     </div>
