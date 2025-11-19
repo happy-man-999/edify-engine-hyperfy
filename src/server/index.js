@@ -427,6 +427,52 @@ fastify.get('/api/edify/items', async (req, reply) => {
   }
 })
 
+// Demo email endpoint - forwards to edifyengine server
+fastify.post('/api/demo-email', async (req, reply) => {
+  try {
+    const { email } = req.body
+
+    if (!email) {
+      return reply.code(400).send({ 
+        error: 'Email is required',
+        message: 'Please provide a valid email address'
+      })
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return reply.code(400).send({ 
+        error: 'Invalid email format',
+        message: 'Please provide a valid email address'
+      })
+    }
+
+    // Forward request to edifyengine server
+    const response = await fetch(`${edifyEngineServerUrl}/api/demo-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      return reply.code(response.status).send(data)
+    }
+
+    return reply.send(data)
+  } catch (err) {
+    console.error('Error submitting demo email:', err)
+    return reply.code(500).send({ 
+      error: 'Internal server error',
+      message: 'Failed to process email submission'
+    })
+  }
+})
+
 fastify.get('/health', async (request, reply) => {
   try {
     // Basic health check

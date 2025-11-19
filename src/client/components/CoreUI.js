@@ -1428,7 +1428,8 @@ function EmailCaptureModal({ onClose }) {
     try {
       // Try to send email to API if available, otherwise just store locally
       try {
-        const response = await fetch('https://edifyengine.com/api/demo-email', {
+        // Use relative path to call hyperfy server endpoint, which forwards to edifyengine
+        const response = await fetch('/api/demo-email', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
