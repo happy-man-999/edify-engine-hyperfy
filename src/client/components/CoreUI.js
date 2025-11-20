@@ -1584,7 +1584,7 @@ function EmailCaptureModal({ onClose }) {
 function DiscountOfferModal({ onClose }) {
   const handleClaimOffer = () => {
     sessionStorage.setItem('edify_discount_seen', 'true')
-    window.location.href = 'https://edifyengine.com/signup'
+    window.location.href = 'https://edifyengine.com/discounted-plan'
   }
 
   return (
@@ -1704,14 +1704,14 @@ function DiscountOfferModal({ onClose }) {
           <div className='discount-modal-close' onClick={onClose}>
             ×
           </div>
-          <div className='discount-modal-badge'>10% off Starter Annual</div>
-          <h2 className='discount-modal-headline'>Save 10% and Go Beyond the Demo</h2>
+          <div className='discount-modal-badge'>25% off Starter Annual</div>
+          <h2 className='discount-modal-headline'>Save 25% and Go Beyond the Demo</h2>
           <p className='discount-modal-subheading'>
-            Unlock Full Access for $252 - Regular monthly: $29/mo → $348/year
+            Unlock Full Access for $189 - Regular yearly: $252/year
           </p>
           <div className='discount-modal-price'>
-            <div className='price-amount'>$252/year</div>
-            <div className='price-note'>Save $96 compared to monthly</div>
+            <div className='price-amount'>$189/year</div>
+            <div className='price-note'>Save $63 compared to yearly billing</div>
           </div>
           <button className='discount-modal-button' onClick={handleClaimOffer}>
             Claim Offer
