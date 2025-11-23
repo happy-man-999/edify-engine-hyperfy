@@ -1705,13 +1705,13 @@ function DiscountOfferModal({ onClose }) {
             ×
           </div>
           <div className='discount-modal-badge'>25% off Starter Annual</div>
-          <h2 className='discount-modal-headline'>Save 25% and Go Beyond the Demo</h2>
+          <h2 className='discount-modal-headline'>Go Beyond the Demo</h2>
           <p className='discount-modal-subheading'>
-            Unlock Full Access for $189 - Regular yearly: $252/year
+            Unlock Full Access for Only $189<br />Save $63 with the Demo Discount
           </p>
           <div className='discount-modal-price'>
             <div className='price-amount'>$189/year</div>
-            <div className='price-note'>Save $63 compared to yearly billing</div>
+            <div className='price-note'>Limited Offer on Starter Annual Plan</div>
           </div>
           <button className='discount-modal-button' onClick={handleClaimOffer}>
             Claim Offer
