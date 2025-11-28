@@ -5,7 +5,7 @@ import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
 import { css } from '@firebolt-dev/css'
 // import { UnsafeBurnerWalletAdapter } from "@solana/wallet-adapter-wallets";
 
-const RPC_URL = process.env.PUBLIC_RPC_URL
+const RPC_URL = process.env.PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com'
 
 export function WalletProvider({ children }) {
   const network = WalletAdapterNetwork.Mainnet
@@ -16,6 +16,20 @@ export function WalletProvider({ children }) {
     ],
     [network]
   )
+
+  // Validate RPC URL
+  if (!RPC_URL || (!RPC_URL.startsWith('http://') && !RPC_URL.startsWith('https://'))) {
+    console.error('Invalid PUBLIC_RPC_URL. Must start with http:// or https://. Using default mainnet endpoint.')
+    const defaultRPC = 'https://api.mainnet-beta.solana.com'
+    return (
+      <ConnectionProvider endpoint={defaultRPC}>
+        <AdaptorWalletProvider wallets={wallets} autoConnect>
+          <AdaptorStyles />
+          <WalletModalProvider>{children}</WalletModalProvider>
+        </AdaptorWalletProvider>
+      </ConnectionProvider>
+    )
+  }
 
   return (
     <ConnectionProvider endpoint={RPC_URL}>

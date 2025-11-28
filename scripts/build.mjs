@@ -39,6 +39,7 @@ const clientHtmlDest = path.join(rootDir, 'build/public/index.html')
     jsxImportSource: '@firebolt-dev/jsx',
     define: {
       'process.env.NODE_ENV': dev ? '"development"' : '"production"',
+      'process.env.PUBLIC_RPC_URL': process.env.PUBLIC_RPC_URL ? JSON.stringify(process.env.PUBLIC_RPC_URL) : JSON.stringify('https://api.mainnet-beta.solana.com'),
     },
     loader: {
       '.js': 'jsx',
