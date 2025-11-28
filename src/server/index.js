@@ -18,6 +18,7 @@ import { Storage } from './Storage'
 import { assets } from './assets'
 import { collections } from './collections'
 import { cleaner } from './cleaner'
+import { readJWT } from '../core/utils-server'
 
 const rootDir = path.join(__dirname, '../')
 const worldDir = path.join(rootDir, process.env.WORLD)
@@ -356,6 +357,48 @@ fastify.put('/api/ai-api-key', async (req, reply) => {
   }
 })
 
+// Check and update admin status after sign-in
+fastify.post('/api/edify/check-admin', async (req, reply) => {
+  try {
+    const { authToken, edifyToken } = req.body
+
+    if (!authToken) {
+      return reply.code(400).send({ message: 'Auth token is required' })
+    }
+
+    if (!edifyToken) {
+      return reply.code(400).send({ message: 'Edify token is required' })
+    }
+
+    // Get userId from authToken
+    let userId
+    try {
+      const decoded = await readJWT(authToken)
+      if (!decoded || !decoded.userId) {
+        return reply.code(401).send({ message: 'Invalid auth token' })
+      }
+      userId = decoded.userId
+    } catch (err) {
+      return reply.code(401).send({ message: 'Invalid auth token' })
+    }
+
+    // Get hostname from request
+    const hostname = req.hostname
+
+    // Update admin status
+    const result = await world.network.updateAdminStatusForUser(userId, edifyToken, hostname)
+
+    if (!result.success) {
+      return reply.code(500).send({ message: result.message || 'Failed to update admin status' })
+    }
+
+    return reply.send(result)
+  } catch (err) {
+    console.error('Error checking admin status:', err)
+    return reply.code(500).send({ message: 'Failed to check admin status', error: err.message })
+  }
+})
+
 // Edify items endpoint with authentication
 fastify.get('/api/edify/items', async (req, reply) => {
   try {
@@ -487,7 +530,8 @@ try {
 
 async function worldNetwork(fastify) {
   fastify.get('/ws', { websocket: true }, (ws, req) => {
-    world.network.onConnection(ws, req.query)
+    const hostname = req.hostname
+    world.network.onConnection(ws, { ...req.query, hostname })
   })
 }
 

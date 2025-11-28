@@ -26,9 +26,11 @@ export class ClientNetwork extends System {
 
   init({ wsUrl, name, avatar }) {
     const authToken = storage.get('authToken')
+    const edifyToken = typeof localStorage !== 'undefined' ? localStorage.getItem('edifyToken') : null
     let url = `${wsUrl}?authToken=${authToken}`
     if (name) url += `&name=${encodeURIComponent(name)}`
     if (avatar) url += `&avatar=${encodeURIComponent(avatar)}`
+    if (edifyToken) url += `&edifyToken=${encodeURIComponent(edifyToken)}`
     this.ws = new WebSocket(url)
     this.ws.binaryType = 'arraybuffer'
     this.ws.addEventListener('message', this.onPacket)

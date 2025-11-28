@@ -180,53 +180,55 @@ export function Sidebar({ world, ui }) {
               </Btn>
             )}
           </Section>
-          {isBuilder && (
-            <Section active={activePane} top bottom>
-              <Btn
-                active={activePane === 'edify'}
-                suspended={ui.pane === 'edify' && !activePane}
-                onClick={() => world.ui.togglePane('edify')}
-              >
-                <span
-                  css={css`
-                    font-size: 1.25rem;
-                    font-weight: 600;
-                    color: inherit;
-                  `}
-                >
-                  E
-                </span>
-              </Btn>
-              <Btn
-                active={activePane === 'world'}
-                suspended={ui.pane === 'world' && !activePane}
-                onClick={() => world.ui.togglePane('world')}
-              >
-                <EarthIcon size='1.25rem' />
-              </Btn>
-              {/* <Btn
-              active={activePane === 'docs'}
-              suspended={ui.pane === 'docs' && !activePane}
-              onClick={() => world.ui.togglePane('docs')}
+          <Section active={activePane} top bottom>
+            <Btn
+              active={activePane === 'edify'}
+              suspended={ui.pane === 'edify' && !activePane}
+              onClick={() => world.ui.togglePane('edify')}
             >
-              <BookTextIcon size='1.25rem' />
-            </Btn> */}
-              <Btn
-                active={activePane === 'apps'}
-                suspended={ui.pane === 'apps' && !activePane}
-                onClick={() => world.ui.togglePane('apps')}
+              <span
+                css={css`
+                  font-size: 1.25rem;
+                  font-weight: 600;
+                  color: inherit;
+                `}
               >
-                <LayersIcon size='1.25rem' />
-              </Btn>
-              <Btn
-                active={activePane === 'add'}
-                suspended={ui.pane === 'add' && !activePane}
-                onClick={() => world.ui.togglePane('add')}
+                E
+              </span>
+            </Btn>
+            {isBuilder && (
+              <>
+                <Btn
+                  active={activePane === 'world'}
+                  suspended={ui.pane === 'world' && !activePane}
+                  onClick={() => world.ui.togglePane('world')}
+                >
+                  <EarthIcon size='1.25rem' />
+                </Btn>
+                {/* <Btn
+                active={activePane === 'docs'}
+                suspended={ui.pane === 'docs' && !activePane}
+                onClick={() => world.ui.togglePane('docs')}
               >
-                <CirclePlusIcon size='1.25rem' />
-              </Btn>
-            </Section>
-          )}
+                <BookTextIcon size='1.25rem' />
+              </Btn> */}
+                <Btn
+                  active={activePane === 'apps'}
+                  suspended={ui.pane === 'apps' && !activePane}
+                  onClick={() => world.ui.togglePane('apps')}
+                >
+                  <LayersIcon size='1.25rem' />
+                </Btn>
+                <Btn
+                  active={activePane === 'add'}
+                  suspended={ui.pane === 'add' && !activePane}
+                  onClick={() => world.ui.togglePane('add')}
+                >
+                  <CirclePlusIcon size='1.25rem' />
+                </Btn>
+              </>
+            )}
+          </Section>
           {ui.app && (
             <Section active={activePane} top bottom>
               <Btn
@@ -1603,9 +1605,33 @@ function EdifyLogin({ onClose, onLoginSuccess }) {
 
   useEffect(() => {
     // Listen for Google auth messages from popup
-    const handleMessage = (event) => {
+    const handleMessage = async (event) => {
       if (event.data.type === 'edify-google-auth-success' && event.data.token) {
         localStorage.setItem('edifyToken', event.data.token)
+        
+        // Check and update admin status after sign-in
+        try {
+          const authToken = storage.get('authToken')
+          if (authToken) {
+            const checkResponse = await fetch('/api/edify/check-admin', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ authToken, edifyToken: event.data.token }),
+            })
+
+            if (checkResponse.ok) {
+              const checkData = await checkResponse.json()
+              if (checkData.changed) {
+                console.log('Admin status updated:', checkData.rank)
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error checking admin status:', err)
+        }
+        
         onLoginSuccess()
       } else if (event.data.type === 'edify-google-auth-error') {
         setError('Google authentication failed. Please try again.')
@@ -1645,6 +1671,29 @@ function EdifyLogin({ onClose, onLoginSuccess }) {
 
       // Store token in localStorage
       localStorage.setItem('edifyToken', data.token)
+      
+      // Check and update admin status after sign-in
+      try {
+        const authToken = storage.get('authToken')
+        if (authToken) {
+          const checkResponse = await fetch('/api/edify/check-admin', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ authToken, edifyToken: data.token }),
+          })
+
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json()
+            if (checkData.changed) {
+              console.log('Admin status updated:', checkData.rank)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking admin status:', err)
+      }
       
       // Call success callback
       onLoginSuccess()
@@ -2010,6 +2059,32 @@ function EdifyItems({ world, onClose }) {
   const handleLoginSuccess = async () => {
     setIsAuthenticated(true)
     setShowLogin(false)
+    
+    // Check and update admin status after sign-in
+    try {
+      const authToken = storage.get('authToken')
+      const edifyToken = localStorage.getItem('edifyToken')
+      
+      if (authToken && edifyToken) {
+        const response = await fetch('/api/edify/check-admin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ authToken, edifyToken }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.changed) {
+            // Admin status was updated, the rank change will be received via entityModified
+            console.log('Admin status updated:', data.rank)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error checking admin status:', err)
+    }
   }
 
   useEffect(() => {

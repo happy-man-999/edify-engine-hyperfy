@@ -221,6 +221,8 @@ export class ServerNetwork extends System {
       let authToken = params.authToken
       let name = params.name
       let avatar = params.avatar
+      const edifyToken = params.edifyToken
+      const hostname = params.hostname
 
       // get or create user
       let user
@@ -242,6 +244,43 @@ export class ServerNetwork extends System {
         }
         await this.db('users').insert(user)
         authToken = await createJWT({ userId: user.id })
+      }
+
+      // Check if user is droplet owner and grant/revoke admin access accordingly
+      let initialRank = user.rank
+      if (edifyToken && hostname) {
+        try {
+          const isOwner = await this.checkDropletOwnership(edifyToken, hostname)
+          if (isOwner) {
+            // Grant admin access if user is owner
+            initialRank = Ranks.ADMIN
+            // Update user rank in database
+            await this.db('users').where('id', user.id).update({ rank: initialRank })
+            user.rank = initialRank
+          } else {
+            // Revoke admin access if user is not owner (even if they were admin before)
+            if (user.rank === Ranks.ADMIN) {
+              initialRank = Ranks.VISITOR
+              await this.db('users').where('id', user.id).update({ rank: initialRank })
+              user.rank = initialRank
+            }
+          }
+        } catch (err) {
+          console.error('Error checking droplet ownership:', err)
+          // On error, revoke admin if they have it
+          if (user.rank === Ranks.ADMIN) {
+            initialRank = Ranks.VISITOR
+            await this.db('users').where('id', user.id).update({ rank: initialRank })
+            user.rank = initialRank
+          }
+        }
+      } else {
+        // No edifyToken or hostname - revoke admin access if they have it
+        if (user.rank === Ranks.ADMIN) {
+          initialRank = Ranks.VISITOR
+          await this.db('users').where('id', user.id).update({ rank: initialRank })
+          user.rank = initialRank
+        }
       }
 
       // disconnect if user already in this world
@@ -271,7 +310,7 @@ export class ServerNetwork extends System {
           health: HEALTH_MAX,
           avatar: user.avatar || this.world.settings.avatar?.url || 'asset://avatar.vrm',
           sessionAvatar: avatar || null,
-          rank: user.rank,
+          rank: initialRank,
           enteredAt: Date.now(),
         },
         true
@@ -316,30 +355,16 @@ export class ServerNetwork extends System {
     const player = socket.player
     const playerId = player.data.id
     const [cmd, arg1, arg2] = args
-    // become admin command
+    // become admin command - DISABLED
+    // Admin access is now granted automatically to droplet owners when they sign in through Edify
     if (cmd === 'admin') {
-      const code = arg1
-      if (process.env.ADMIN_CODE && process.env.ADMIN_CODE === code) {
-        const id = player.data.id
-        const userId = player.data.userId
-        const granted = !player.isAdmin()
-        let rank
-        if (granted) {
-          rank = Ranks.ADMIN
-        } else {
-          rank = Ranks.VISITOR
-        }
-        player.modify({ rank })
-        this.send('entityModified', { id, rank })
-        socket.send('chatAdded', {
-          id: uuid(),
-          from: null,
-          fromId: null,
-          body: granted ? 'Admin granted!' : 'Admin revoked!',
-          createdAt: moment().toISOString(),
-        })
-        await this.db('users').where('id', userId).update({ rank })
-      }
+      socket.send('chatAdded', {
+        id: uuid(),
+        from: null,
+        fromId: null,
+        body: 'Admin code feature has been disabled. Admin access is granted to droplet owners when signing in through Edify.',
+        createdAt: moment().toISOString(),
+      })
     }
     if (cmd === 'name') {
       const name = arg1
@@ -577,5 +602,104 @@ export class ServerNetwork extends System {
     this.world.livekit.clearModifiers(socket.id)
     socket.player.destroy(true)
     this.sockets.delete(socket.id)
+  }
+
+  async checkDropletOwnership(edifyToken, hostname) {
+    try {
+      const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+      
+      if (!hostname) {
+        console.warn('Hostname not available, cannot check droplet ownership')
+        return false
+      }
+
+      // Get user's droplets from Edify Engine
+      const response = await fetch(`${edifyEngineServerUrl}/api/user/droplets`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${edifyToken}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        return false
+      }
+
+      const data = await response.json()
+      if (!data.success || !data.droplets) {
+        return false
+      }
+
+      // Find droplet matching current domain (same logic as client-side getDropletId)
+      const currentDroplet = data.droplets.find(droplet => {
+        const subdomain = droplet.subdomain ? `${droplet.subdomain}.edifyengine.com` : null
+        const customDomain = droplet.customDomain
+        return (subdomain && hostname === subdomain) || (customDomain && hostname === customDomain)
+      })
+
+      // If we found a matching droplet, the user owns it
+      return !!currentDroplet
+    } catch (err) {
+      console.error('Error checking droplet ownership:', err)
+      return false
+    }
+  }
+
+  async updateAdminStatusForUser(userId, edifyToken, hostname) {
+    try {
+      // Get user from database
+      const user = await this.db('users').where('id', userId).first()
+      if (!user) {
+        return { success: false, message: 'User not found' }
+      }
+
+      // Check if user is droplet owner
+      let newRank = user.rank
+      if (edifyToken && hostname) {
+        try {
+          const isOwner = await this.checkDropletOwnership(edifyToken, hostname)
+          if (isOwner) {
+            // Grant admin access if user is owner
+            newRank = Ranks.ADMIN
+          } else {
+            // Revoke admin access if user is not owner
+            if (user.rank === Ranks.ADMIN) {
+              newRank = Ranks.VISITOR
+            }
+          }
+        } catch (err) {
+          console.error('Error checking droplet ownership:', err)
+          // On error, revoke admin if they have it
+          if (user.rank === Ranks.ADMIN) {
+            newRank = Ranks.VISITOR
+          }
+        }
+      } else {
+        // No edifyToken or hostname - revoke admin access if they have it
+        if (user.rank === Ranks.ADMIN) {
+          newRank = Ranks.VISITOR
+        }
+      }
+
+      // Update rank if it changed
+      if (newRank !== user.rank) {
+        await this.db('users').where('id', userId).update({ rank: newRank })
+        
+        // Update player entity rank
+        const socket = this.sockets.get(userId)
+        if (socket && socket.player) {
+          socket.player.modify({ rank: newRank })
+          this.send('entityModified', { id: userId, rank: newRank })
+        }
+
+        return { success: true, rank: newRank, changed: true }
+      }
+
+      return { success: true, rank: newRank, changed: false }
+    } catch (err) {
+      console.error('Error updating admin status:', err)
+      return { success: false, message: err.message }
+    }
   }
 }
