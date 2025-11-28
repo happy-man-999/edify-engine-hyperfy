@@ -69,7 +69,7 @@ import { useRank } from './useRank'
 import { Ranks } from '../../core/extras/ranks'
 
 const mainSectionPanes = ['prefs']
-const worldSectionPanes = ['world', 'docs', 'apps', 'add']
+const worldSectionPanes = ['world', 'docs', 'apps', 'add', 'edify']
 const appSectionPanes = ['app', 'script', 'nodes', 'meta']
 
 const e1 = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -183,6 +183,21 @@ export function Sidebar({ world, ui }) {
           {isBuilder && (
             <Section active={activePane} top bottom>
               <Btn
+                active={activePane === 'edify'}
+                suspended={ui.pane === 'edify' && !activePane}
+                onClick={() => world.ui.togglePane('edify')}
+              >
+                <span
+                  css={css`
+                    font-size: 1.25rem;
+                    font-weight: 600;
+                    color: inherit;
+                  `}
+                >
+                  E
+                </span>
+              </Btn>
+              <Btn
                 active={activePane === 'world'}
                 suspended={ui.pane === 'world' && !activePane}
                 onClick={() => world.ui.togglePane('world')}
@@ -249,6 +264,7 @@ export function Sidebar({ world, ui }) {
         {ui.pane === 'world' && <World world={world} hidden={!ui.active} />}
         {ui.pane === 'apps' && <Apps world={world} hidden={!ui.active} />}
         {ui.pane === 'add' && <Add world={world} hidden={!ui.active} />}
+        {ui.pane === 'edify' && <Edify world={world} hidden={!ui.active} />}
         {ui.pane === 'app' && <App key={ui.app.data.id} world={world} hidden={!ui.active} />}
         {ui.pane === 'script' && <Script key={ui.app.data.id} world={world} hidden={!ui.active} />}
         {ui.pane === 'nodes' && <Nodes key={ui.app.data.id} world={world} hidden={!ui.active} />}
@@ -1441,7 +1457,6 @@ function Apps({ world, hidden }) {
 function Add({ world, hidden }) {
   // note: multiple collections are supported by the engine but for now we just use the 'default' collection.
   const collection = world.collections.get('default')
-  const [showEdify, setShowEdify] = useState(false)
   const span = 4
   const gap = '0.5rem'
   const add = blueprint => {
@@ -1527,43 +1542,43 @@ function Add({ world, hidden }) {
           <div className='add-title'>Add</div>
         </div>
         <div className='add-content noscrollbar'>
-          {showEdify ? (
-            <EdifyItems world={world} onClose={() => setShowEdify(false)} />
-          ) : (
-            <>
-              <div className='add-items'>
-                <div className='add-item' onClick={() => setShowEdify(true)}>
-                  <div
-                    className='add-item-image'
-                    css={css`
-                      background: linear-gradient(135deg, rgba(100, 100, 255, 0.2) 0%, rgba(200, 100, 255, 0.2) 100%);
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                      font-size: 1.5rem;
-                      font-weight: 600;
-                      color: rgba(255, 255, 255, 0.8);
-                    `}
-                  >
-                    E
-                  </div>
-                  <div className='add-item-name'>Edify</div>
-                </div>
-                {collection.blueprints.map(blueprint => (
-                  <div className='add-item' key={blueprint.id} onClick={() => add(blueprint)}>
-                    <div
-                      className='add-item-image'
-                      css={css`
-                        background-image: url(${world.resolveURL(blueprint.image?.url)});
-                      `}
-                    ></div>
-                    <div className='add-item-name'>{blueprint.name}</div>
-                  </div>
-                ))}
+          <div className='add-items'>
+            {collection.blueprints.map(blueprint => (
+              <div className='add-item' key={blueprint.id} onClick={() => add(blueprint)}>
+                <div
+                  className='add-item-image'
+                  css={css`
+                    background-image: url(${world.resolveURL(blueprint.image?.url)});
+                  `}
+                ></div>
+                <div className='add-item-name'>{blueprint.name}</div>
               </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
+      </div>
+    </Pane>
+  )
+}
+
+function Edify({ world, hidden }) {
+  return (
+    <Pane hidden={hidden}>
+      <div
+        className='edify'
+        css={css`
+          background: rgba(11, 10, 21, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 1.375rem;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 17rem;
+          padding: 1rem;
+          overflow-y: auto;
+        `}
+      >
+        <EdifyItems world={world} onClose={() => world.ui.togglePane(null)} />
       </div>
     </Pane>
   )
