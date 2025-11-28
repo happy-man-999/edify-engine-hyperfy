@@ -35,6 +35,7 @@ import {
   RotateCwIcon,
   EyeIcon,
   EyeOffIcon,
+  WalletIcon,
 } from 'lucide-react'
 import { cls } from './cls'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
@@ -69,7 +70,7 @@ import { useRank } from './useRank'
 import { Ranks } from '../../core/extras/ranks'
 
 const mainSectionPanes = ['prefs']
-const worldSectionPanes = ['world', 'docs', 'apps', 'add', 'edify']
+const worldSectionPanes = ['world', 'docs', 'apps', 'add', 'edify', 'wallets']
 const appSectionPanes = ['app', 'script', 'nodes', 'meta']
 
 const e1 = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -196,6 +197,15 @@ export function Sidebar({ world, ui }) {
                 E
               </span>
             </Btn>
+            {isAdmin && (
+              <Btn
+                active={activePane === 'wallets'}
+                suspended={ui.pane === 'wallets' && !activePane}
+                onClick={() => world.ui.togglePane('wallets')}
+              >
+                <WalletIcon size='1.25rem' />
+              </Btn>
+            )}
             {isBuilder && (
               <>
                 <Btn
@@ -267,6 +277,7 @@ export function Sidebar({ world, ui }) {
         {ui.pane === 'apps' && <Apps world={world} hidden={!ui.active} />}
         {ui.pane === 'add' && <Add world={world} hidden={!ui.active} />}
         {ui.pane === 'edify' && <Edify world={world} hidden={!ui.active} />}
+        {ui.pane === 'wallets' && <Wallets world={world} hidden={!ui.active} />}
         {ui.pane === 'app' && <App key={ui.app.data.id} world={world} hidden={!ui.active} />}
         {ui.pane === 'script' && <Script key={ui.app.data.id} world={world} hidden={!ui.active} />}
         {ui.pane === 'nodes' && <Nodes key={ui.app.data.id} world={world} hidden={!ui.active} />}
@@ -1997,10 +2008,40 @@ function EdifyItems({ world, onClose }) {
         return
       }
 
-      // Just verify token without fetching items
-      setIsAuthenticated(true)
-      setShowLogin(false)
-      setLoading(false)
+      // Verify token by making a test request
+      try {
+        const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
+        const response = await fetch(`${edifyEngineUrl}/api/user/droplets`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Token is expired or invalid, remove it and show login
+            localStorage.removeItem('edifyToken')
+            setIsAuthenticated(false)
+            setShowLogin(true)
+            setLoading(false)
+            return
+          }
+          throw new Error('Failed to verify token')
+        }
+
+        // Token is valid
+        setIsAuthenticated(true)
+        setShowLogin(false)
+      } catch (err) {
+        console.error('Error verifying token:', err)
+        // On error, remove token and show login
+        localStorage.removeItem('edifyToken')
+        setIsAuthenticated(false)
+        setShowLogin(true)
+      } finally {
+        setLoading(false)
+      }
     }
 
     checkAuth()
@@ -2453,6 +2494,323 @@ function EdifyItems({ world, onClose }) {
         </div>
       )}
     </div>
+  )
+}
+
+function Wallets({ world, hidden }) {
+  const [walletAddresses, setWalletAddresses] = useState([])
+  const [newAddress, setNewAddress] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const fetchWallets = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const token = localStorage.getItem('edifyToken')
+        if (!token) {
+          setError('Not authenticated. Please log in to Edify Engine.')
+          setLoading(false)
+          return
+        }
+        
+        const response = await fetch('/api/edify/wallets', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Token is expired or invalid, remove it
+            localStorage.removeItem('edifyToken')
+            setError('Session expired. Please sign in through the Edify panel.')
+            setLoading(false)
+            return
+          }
+          const errorData = await response.json()
+          throw new Error(errorData.message || 'Failed to fetch wallet addresses')
+        }
+
+        const data = await response.json()
+        setWalletAddresses(data.walletAddresses || [])
+      } catch (err) {
+        console.error('Error fetching wallet addresses:', err)
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchWallets()
+  }, [])
+
+  const handleAddAddress = () => {
+    if (!newAddress.trim()) return
+    
+    const trimmedAddress = newAddress.trim()
+    if (walletAddresses.includes(trimmedAddress)) {
+      setError('This wallet address already exists')
+      return
+    }
+    
+    setWalletAddresses([...walletAddresses, trimmedAddress])
+    setNewAddress('')
+    setError(null)
+  }
+
+  const handleRemoveAddress = (address) => {
+    setWalletAddresses(walletAddresses.filter(addr => addr !== address))
+  }
+
+  const handleSave = async () => {
+    try {
+      setSaving(true)
+      setError(null)
+      
+      const token = localStorage.getItem('edifyToken')
+      if (!token) {
+        setError('Not authenticated. Please log in to Edify Engine.')
+        return
+      }
+      
+      const response = await fetch('/api/edify/wallets', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ walletAddresses })
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Token is expired or invalid, remove it
+          localStorage.removeItem('edifyToken')
+          setError('Session expired. Please sign in through the Edify panel.')
+          setSaving(false)
+          return
+        }
+        const data = await response.json()
+        throw new Error(data.message || 'Failed to save wallet addresses')
+      }
+
+      const data = await response.json()
+      setWalletAddresses(data.walletAddresses || [])
+      alert('Wallet addresses saved successfully!')
+    } catch (err) {
+      console.error('Error saving wallet addresses:', err)
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Pane hidden={hidden}>
+      <div
+        className='wallets'
+        css={css`
+          background: rgba(11, 10, 21, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 1.375rem;
+          display: flex;
+          flex-direction: column;
+          min-height: 12rem;
+          .wallets-head {
+            height: 3.125rem;
+            padding: 0 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          }
+          .wallets-back-btn {
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: rgba(255, 255, 255, 0.8);
+            &:hover {
+              background: rgba(255, 255, 255, 0.1);
+              border-color: rgba(255, 255, 255, 0.2);
+              color: white;
+            }
+          }
+          .wallets-title {
+            flex: 1;
+            font-weight: 500;
+            font-size: 1rem;
+            line-height: 1;
+          }
+          .wallets-content {
+            flex: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+          }
+          .wallets-add {
+            display: flex;
+            gap: 0.5rem;
+          }
+          .wallets-input {
+            flex: 1;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            &::placeholder {
+              color: rgba(255, 255, 255, 0.5);
+            }
+            &:focus {
+              outline: none;
+              border-color: rgba(255, 255, 255, 0.3);
+            }
+          }
+          .wallets-btn {
+            padding: 0.75rem 1rem;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            &:hover:not(:disabled) {
+              background: rgba(59, 130, 246, 0.3);
+              border-color: rgba(59, 130, 246, 0.4);
+            }
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          }
+          .wallets-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+          }
+          .wallets-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+          }
+          .wallets-address {
+            flex: 1;
+            font-size: 0.875rem;
+            font-family: monospace;
+            word-break: break-all;
+            color: rgba(255, 255, 255, 0.9);
+          }
+          .wallets-remove {
+            padding: 0.25rem 0.5rem;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 0.375rem;
+            color: white;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            &:hover {
+              background: rgba(239, 68, 68, 0.3);
+              border-color: rgba(239, 68, 68, 0.4);
+            }
+          }
+          .wallets-error {
+            padding: 0.75rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 0.5rem;
+            color: rgba(239, 68, 68, 0.9);
+            font-size: 0.875rem;
+          }
+          .wallets-loading {
+            padding: 2rem;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.875rem;
+          }
+        `}
+      >
+        <div className='wallets-head'>
+          <div className='wallets-back-btn' onClick={() => world.ui.togglePane(null)}>
+            ←
+          </div>
+          <div className='wallets-title'>Wallet Addresses</div>
+        </div>
+        <div className='wallets-content noscrollbar'>
+          {loading ? (
+            <div className='wallets-loading'>Loading...</div>
+          ) : (
+            <>
+              {error && <div className='wallets-error'>{error}</div>}
+              <div className='wallets-add'>
+                <input
+                  type='text'
+                  className='wallets-input'
+                  placeholder='Enter wallet address'
+                  value={newAddress}
+                  onChange={e => setNewAddress(e.target.value)}
+                  onKeyPress={e => e.key === 'Enter' && handleAddAddress()}
+                />
+                <button
+                  className='wallets-btn'
+                  onClick={handleAddAddress}
+                  disabled={!newAddress.trim()}
+                >
+                  Add
+                </button>
+              </div>
+              <div className='wallets-list'>
+                {walletAddresses.length === 0 ? (
+                  <div style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.875rem', textAlign: 'center', padding: '1rem' }}>
+                    No wallet addresses added yet
+                  </div>
+                ) : (
+                  walletAddresses.map((address, index) => (
+                    <div key={index} className='wallets-item'>
+                      <div className='wallets-address'>{address}</div>
+                      <button
+                        className='wallets-remove'
+                        onClick={() => handleRemoveAddress(address)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              <button
+                className='wallets-btn'
+                onClick={handleSave}
+                disabled={saving}
+                style={{ marginTop: 'auto' }}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </Pane>
   )
 }
 

@@ -399,6 +399,157 @@ fastify.post('/api/edify/check-admin', async (req, reply) => {
   }
 })
 
+// Get wallet addresses for current droplet
+fastify.get('/api/edify/wallets', async (req, reply) => {
+  try {
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization
+    const token = authHeader && authHeader.split(' ')[1] // Bearer TOKEN
+
+    if (!token) {
+      return reply.code(401).send({ message: 'Authentication required' })
+    }
+
+    // Get hostname from request
+    const hostname = req.hostname
+    const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+
+    // First, get user's droplets to find the current droplet
+    const dropletsResponse = await fetch(`${edifyEngineServerUrl}/api/user/droplets`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!dropletsResponse.ok) {
+      if (dropletsResponse.status === 401) {
+        return reply.code(401).send({ message: 'Token expired or invalid' })
+      }
+      return reply.code(dropletsResponse.status).send({ message: 'Failed to fetch droplets' })
+    }
+
+    const dropletsData = await dropletsResponse.json()
+    if (!dropletsData.success || !dropletsData.droplets) {
+      return reply.code(404).send({ message: 'No droplets found' })
+    }
+
+    // Find droplet matching current domain
+    const currentDroplet = dropletsData.droplets.find(droplet => {
+      const subdomain = droplet.subdomain ? `${droplet.subdomain}.edifyengine.com` : null
+      const customDomain = droplet.customDomain
+      return (subdomain && hostname === subdomain) || (customDomain && hostname === customDomain)
+    })
+
+    if (!currentDroplet) {
+      return reply.code(404).send({ message: 'Droplet not found for current domain' })
+    }
+
+    // Get wallet addresses for this droplet
+    const walletsResponse = await fetch(`${edifyEngineServerUrl}/api/user/droplets/${currentDroplet.dropletId}/wallets`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!walletsResponse.ok) {
+      if (walletsResponse.status === 401) {
+        return reply.code(401).send({ message: 'Token expired or invalid' })
+      }
+      const errorData = await walletsResponse.json()
+      return reply.code(walletsResponse.status).send(errorData)
+    }
+
+    const walletsData = await walletsResponse.json()
+    return reply.send(walletsData)
+  } catch (err) {
+    console.error('Error fetching wallet addresses:', err)
+    return reply.code(500).send({ error: err.message })
+  }
+})
+
+// Update wallet addresses for current droplet
+fastify.put('/api/edify/wallets', async (req, reply) => {
+  try {
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization
+    const token = authHeader && authHeader.split(' ')[1] // Bearer TOKEN
+
+    if (!token) {
+      return reply.code(401).send({ message: 'Authentication required' })
+    }
+
+    const { walletAddresses } = req.body
+
+    if (!Array.isArray(walletAddresses)) {
+      return reply.code(400).send({ message: 'walletAddresses must be an array' })
+    }
+
+    // Get hostname from request
+    const hostname = req.hostname
+    const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+
+    // First, get user's droplets to find the current droplet
+    const dropletsResponse = await fetch(`${edifyEngineServerUrl}/api/user/droplets`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!dropletsResponse.ok) {
+      if (dropletsResponse.status === 401) {
+        return reply.code(401).send({ message: 'Token expired or invalid' })
+      }
+      return reply.code(dropletsResponse.status).send({ message: 'Failed to fetch droplets' })
+    }
+
+    const dropletsData = await dropletsResponse.json()
+    if (!dropletsData.success || !dropletsData.droplets) {
+      return reply.code(404).send({ message: 'No droplets found' })
+    }
+
+    // Find droplet matching current domain
+    const currentDroplet = dropletsData.droplets.find(droplet => {
+      const subdomain = droplet.subdomain ? `${droplet.subdomain}.edifyengine.com` : null
+      const customDomain = droplet.customDomain
+      return (subdomain && hostname === subdomain) || (customDomain && hostname === customDomain)
+    })
+
+    if (!currentDroplet) {
+      return reply.code(404).send({ message: 'Droplet not found for current domain' })
+    }
+
+    // Update wallet addresses for this droplet
+    const walletsResponse = await fetch(`${edifyEngineServerUrl}/api/user/droplets/${currentDroplet.dropletId}/wallets`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ walletAddresses }),
+    })
+
+    if (!walletsResponse.ok) {
+      if (walletsResponse.status === 401) {
+        return reply.code(401).send({ message: 'Token expired or invalid' })
+      }
+      const errorData = await walletsResponse.json()
+      return reply.code(walletsResponse.status).send(errorData)
+    }
+
+    const walletsData = await walletsResponse.json()
+    return reply.send(walletsData)
+  } catch (err) {
+    console.error('Error updating wallet addresses:', err)
+    return reply.code(500).send({ error: err.message })
+  }
+})
+
 // Edify items endpoint with authentication
 fastify.get('/api/edify/items', async (req, reply) => {
   try {
