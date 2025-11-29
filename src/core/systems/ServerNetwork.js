@@ -246,42 +246,9 @@ export class ServerNetwork extends System {
         authToken = await createJWT({ userId: user.id })
       }
 
-      // Check if user is droplet owner and grant/revoke admin access accordingly
+      // Initial rank - will be updated by updateAdminAccessStatus after player is created
+      // This ensures we check both edifyToken and wallet status
       let initialRank = user.rank
-      if (edifyToken && hostname) {
-        try {
-          const isOwner = await this.checkDropletOwnership(edifyToken, hostname)
-          if (isOwner) {
-            // Grant admin access if user is owner
-            initialRank = Ranks.ADMIN
-            // Update user rank in database
-            await this.db('users').where('id', user.id).update({ rank: initialRank })
-            user.rank = initialRank
-          } else {
-            // Revoke admin access if user is not owner (even if they were admin before)
-            if (user.rank === Ranks.ADMIN) {
-              initialRank = Ranks.VISITOR
-              await this.db('users').where('id', user.id).update({ rank: initialRank })
-              user.rank = initialRank
-            }
-          }
-        } catch (err) {
-          console.error('Error checking droplet ownership:', err)
-          // On error, revoke admin if they have it
-          if (user.rank === Ranks.ADMIN) {
-            initialRank = Ranks.VISITOR
-            await this.db('users').where('id', user.id).update({ rank: initialRank })
-            user.rank = initialRank
-          }
-        }
-      } else {
-        // No edifyToken or hostname - revoke admin access if they have it
-        if (user.rank === Ranks.ADMIN) {
-          initialRank = Ranks.VISITOR
-          await this.db('users').where('id', user.id).update({ rank: initialRank })
-          user.rank = initialRank
-        }
-      }
 
       // disconnect if user already in this world
       if (this.sockets.has(user.id)) {
@@ -296,6 +263,10 @@ export class ServerNetwork extends System {
 
       // create socket
       const socket = new Socket({ id: user.id, ws, network: this })
+      
+      // Store edifyToken and hostname for wallet admin checks
+      socket.edifyToken = edifyToken
+      socket.hostname = hostname
 
       // spawn player
       socket.player = this.world.entities.add(
@@ -315,6 +286,10 @@ export class ServerNetwork extends System {
         },
         true
       )
+
+      // Update admin access status based on edifyToken and wallet (if wallet is already connected)
+      // This handles the case where wallet was connected before Edify sign-in
+      await this.updateAdminAccessStatus(socket)
 
       // send snapshot
       socket.send('snapshot', {
@@ -339,6 +314,15 @@ export class ServerNetwork extends System {
       // enter events on the server are sent after the snapshot.
       // on the client these are sent during PlayerRemote.js entity instantiation!
       this.world.events.emit('enter', { playerId: socket.player.data.id })
+
+      // Update admin access status again after page is fully loaded
+      // This ensures wallet connection status is checked even if wallet connects after initial connection
+      // Use setTimeout to allow client to fully initialize
+      setTimeout(async () => {
+        if (this.sockets.has(socket.id)) {
+          await this.updateAdminAccessStatus(socket)
+        }
+      }, 1000)
     } catch (err) {
       console.error(err)
     }
@@ -512,6 +496,12 @@ export class ServerNetwork extends System {
       if (changed) {
         await this.db('users').where('id', entity.data.userId).update(changes)
       }
+      
+      // Check if wallet address changed (connected or disconnected)
+      // Update admin access status when wallet connects or disconnects
+      if (data.hasOwnProperty('solana')) {
+        await this.updateAdminAccessStatus(socket)
+      }
     }
   }
 
@@ -646,6 +636,107 @@ export class ServerNetwork extends System {
     }
   }
 
+  async checkWalletAuthorization(hostname, walletAddress) {
+    try {
+      const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+      
+      if (!hostname || !walletAddress) {
+        return false
+      }
+
+      // Call the Edify Engine API to check if wallet is authorized
+      const response = await fetch(`${edifyEngineServerUrl}/api/auth/check-wallet-authorization`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ hostname, walletAddress }),
+      })
+
+      if (!response.ok) {
+        console.error('Error checking wallet authorization:', response.statusText)
+        return false
+      }
+
+      const data = await response.json()
+      return data.success && data.authorized === true
+    } catch (err) {
+      console.error('Error checking wallet authorization:', err)
+      return false
+    }
+  }
+
+  /**
+   * Unified function to update admin access status based on:
+   * 1. Edify token + droplet ownership
+   * 2. Wallet connection + wallet authorization
+   * 
+   * Admin access is ON when:
+   * - User has valid edifyToken AND is droplet owner, OR
+   * - User has valid wallet connected AND wallet is in authorized list
+   * 
+   * Admin access is OFF in all other cases
+   */
+  async updateAdminAccessStatus(socket) {
+    try {
+      const player = socket.player
+      if (!player) {
+        console.warn('No player found for socket, cannot update admin access')
+        return
+      }
+
+      const edifyToken = socket.edifyToken || null
+      const hostname = socket.hostname || null
+      const walletAddress = player.data.solana || null
+
+      let shouldHaveAdmin = false
+
+      // Check 1: Edify token + droplet ownership
+      if (edifyToken && hostname) {
+        try {
+          const isOwner = await this.checkDropletOwnership(edifyToken, hostname)
+          if (isOwner) {
+            shouldHaveAdmin = true
+            console.log(`User ${socket.id} has admin access via Edify token (droplet owner)`)
+          }
+        } catch (err) {
+          console.error('Error checking droplet ownership:', err)
+        }
+      }
+
+      // Check 2: Wallet connection + wallet authorization (only if not already admin via Edify)
+      if (!shouldHaveAdmin && walletAddress && hostname) {
+        try {
+          const isAuthorizedWallet = await this.checkWalletAuthorization(hostname, walletAddress)
+          if (isAuthorizedWallet) {
+            shouldHaveAdmin = true
+            console.log(`User ${socket.id} has admin access via authorized wallet: ${walletAddress}`)
+          }
+        } catch (err) {
+          console.error('Error checking wallet authorization:', err)
+        }
+      }
+
+      // Update admin status if needed
+      const currentRank = player.data.rank
+      const newRank = shouldHaveAdmin ? Ranks.ADMIN : Ranks.VISITOR
+
+      if (currentRank !== newRank) {
+        player.modify({ rank: newRank })
+        this.send('entityModified', { id: player.data.id, rank: newRank })
+        await this.db('users').where('id', player.data.userId).update({ rank: newRank })
+        
+        if (shouldHaveAdmin) {
+          console.log(`Granted admin access to user ${socket.id}`)
+        } else {
+          console.log(`Revoked admin access from user ${socket.id}`)
+        }
+      }
+    } catch (err) {
+      console.error('Error updating admin access status:', err)
+    }
+  }
+
   async updateAdminStatusForUser(userId, edifyToken, hostname) {
     try {
       // Get user from database
@@ -654,51 +745,49 @@ export class ServerNetwork extends System {
         return { success: false, message: 'User not found' }
       }
 
-      // Check if user is droplet owner
-      let newRank = user.rank
-      if (edifyToken && hostname) {
-        try {
-          const isOwner = await this.checkDropletOwnership(edifyToken, hostname)
-          if (isOwner) {
-            // Grant admin access if user is owner
-            newRank = Ranks.ADMIN
-          } else {
-            // Revoke admin access if user is not owner
-            if (user.rank === Ranks.ADMIN) {
-              newRank = Ranks.VISITOR
-            }
-          }
-        } catch (err) {
-          console.error('Error checking droplet ownership:', err)
-          // On error, revoke admin if they have it
-          if (user.rank === Ranks.ADMIN) {
+      // Update socket edifyToken and hostname if user is currently connected
+      const socket = this.sockets.get(userId)
+      if (socket) {
+        socket.edifyToken = edifyToken
+        socket.hostname = hostname
+        
+        // Use unified function to update admin access status
+        // This checks both edifyToken and wallet status
+        await this.updateAdminAccessStatus(socket)
+        
+        const newRank = socket.player?.data.rank || user.rank
+        
+        // Update user rank in database
+        if (user.rank !== newRank) {
+          await this.db('users').where('id', userId).update({ rank: newRank })
+        }
+        
+        return { success: true, rank: newRank, changed: user.rank !== newRank }
+      } else {
+        // User is not connected, just update database based on edifyToken
+        // When they connect, updateAdminAccessStatus will be called with full context
+        let newRank = user.rank
+        
+        if (edifyToken && hostname) {
+          try {
+            const isOwner = await this.checkDropletOwnership(edifyToken, hostname)
+            newRank = isOwner ? Ranks.ADMIN : Ranks.VISITOR
+          } catch (err) {
+            console.error('Error checking droplet ownership:', err)
             newRank = Ranks.VISITOR
           }
-        }
-      } else {
-        // No edifyToken or hostname - revoke admin access if they have it
-        if (user.rank === Ranks.ADMIN) {
+        } else {
           newRank = Ranks.VISITOR
         }
-      }
-
-      // Update rank if it changed
-      if (newRank !== user.rank) {
-        await this.db('users').where('id', userId).update({ rank: newRank })
         
-        // Update player entity rank
-        const socket = this.sockets.get(userId)
-        if (socket && socket.player) {
-          socket.player.modify({ rank: newRank })
-          this.send('entityModified', { id: userId, rank: newRank })
+        if (user.rank !== newRank) {
+          await this.db('users').where('id', userId).update({ rank: newRank })
         }
-
-        return { success: true, rank: newRank, changed: true }
+        
+        return { success: true, rank: newRank, changed: user.rank !== newRank }
       }
-
-      return { success: true, rank: newRank, changed: false }
     } catch (err) {
-      console.error('Error updating admin status:', err)
+      console.error('Error updating admin status for user:', err)
       return { success: false, message: err.message }
     }
   }

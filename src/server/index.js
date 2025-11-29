@@ -399,6 +399,58 @@ fastify.post('/api/edify/check-admin', async (req, reply) => {
   }
 })
 
+// Verify Edify token
+fastify.get('/api/edify/verify-token', async (req, reply) => {
+  try {
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization
+    const token = authHeader && authHeader.split(' ')[1] // Bearer TOKEN
+
+    if (!token) {
+      return reply.code(401).send({ 
+        success: false,
+        message: 'Authentication required' 
+      })
+    }
+
+    const edifyEngineServerUrl = process.env.PUBLIC_EDIFY_ENGINE_SERVER || 'https://edifyengine.com'
+
+    // Verify token by making a test request to Edify Engine
+    const response = await fetch(`${edifyEngineServerUrl}/api/user/droplets`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        return reply.code(401).send({ 
+          success: false,
+          message: 'Token expired or invalid' 
+        })
+      }
+      return reply.code(response.status).send({ 
+        success: false,
+        message: 'Failed to verify token' 
+      })
+    }
+
+    // Token is valid
+    return reply.send({ 
+      success: true,
+      message: 'Token is valid' 
+    })
+  } catch (err) {
+    console.error('Error verifying token:', err)
+    return reply.code(500).send({ 
+      success: false,
+      error: err.message 
+    })
+  }
+})
+
 // Get wallet addresses for current droplet
 fastify.get('/api/edify/wallets', async (req, reply) => {
   try {

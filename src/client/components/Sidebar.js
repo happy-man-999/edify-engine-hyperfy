@@ -68,9 +68,11 @@ import { isTouch } from '../utils'
 import { uuid } from '../../core/utils'
 import { useRank } from './useRank'
 import { Ranks } from '../../core/extras/ranks'
+import { useSolanaSystem } from './useSolanaSystem'
+import { useWalletModal } from '@solana/wallet-adapter-react-ui'
 
 const mainSectionPanes = ['prefs']
-const worldSectionPanes = ['world', 'docs', 'apps', 'add', 'edify', 'wallets']
+const worldSectionPanes = ['world', 'docs', 'apps', 'add', 'edify', 'solana', 'wallets']
 const appSectionPanes = ['app', 'script', 'nodes', 'meta']
 
 const e1 = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -197,6 +199,13 @@ export function Sidebar({ world, ui }) {
                 E
               </span>
             </Btn>
+            <Btn
+              active={activePane === 'solana'}
+              suspended={ui.pane === 'solana' && !activePane}
+              onClick={() => world.ui.togglePane('solana')}
+            >
+              <HammerIcon size='1.25rem' />
+            </Btn>
             {isAdmin && (
               <Btn
                 active={activePane === 'wallets'}
@@ -277,6 +286,7 @@ export function Sidebar({ world, ui }) {
         {ui.pane === 'apps' && <Apps world={world} hidden={!ui.active} />}
         {ui.pane === 'add' && <Add world={world} hidden={!ui.active} />}
         {ui.pane === 'edify' && <Edify world={world} hidden={!ui.active} />}
+        {ui.pane === 'solana' && <SolanaWallet world={world} hidden={!ui.active} />}
         {ui.pane === 'wallets' && <Wallets world={world} hidden={!ui.active} />}
         {ui.pane === 'app' && <App key={ui.app.data.id} world={world} hidden={!ui.active} />}
         {ui.pane === 'script' && <Script key={ui.app.data.id} world={world} hidden={!ui.active} />}
@@ -1597,6 +1607,201 @@ function Edify({ world, hidden }) {
   )
 }
 
+function SolanaWallet({ world, hidden }) {
+  const { wallet } = useSolanaSystem(world)
+  const { setVisible } = useWalletModal()
+  const isConnected = wallet?.connected && wallet?.publicKey
+
+  const handleConnect = () => {
+    // Open the wallet selection modal
+    // The modal will handle wallet selection and connection
+    setVisible(true)
+  }
+
+  const handleDisconnect = async () => {
+    try {
+      if (wallet) {
+        await wallet.disconnect()
+      }
+    } catch (error) {
+      console.error('Failed to disconnect wallet:', error)
+    }
+  }
+
+  return (
+    <Pane hidden={hidden}>
+      <div
+        className='solana-wallet'
+        css={css`
+          background: rgba(11, 10, 21, 0.9);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 1.375rem;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 17rem;
+          padding: 1rem;
+          overflow-y: auto;
+        `}
+      >
+        <div
+          css={css`
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+          `}
+        >
+          <div
+            css={css`
+              font-size: 1rem;
+              font-weight: 500;
+              margin-bottom: 0.5rem;
+            `}
+          >
+            Solana Wallet
+          </div>
+
+          {!isConnected ? (
+            <>
+              <div
+                css={css`
+                  display: flex;
+                  align-items: center;
+                  gap: 0.5rem;
+                  padding: 0.75rem;
+                  background: rgba(255, 255, 255, 0.05);
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  border-radius: 0.5rem;
+                  font-size: 0.875rem;
+                  color: rgba(255, 255, 255, 0.8);
+                `}
+              >
+                <InfoIcon size='1rem' />
+                <span>You'll sign as builder of this world</span>
+              </div>
+              <button
+                onClick={handleConnect}
+                disabled={!wallet || wallet.connecting}
+                css={css`
+                  padding: 0.75rem 1.5rem;
+                  background: linear-gradient(135deg, #9945ff 0%, #14f195 100%);
+                  border: none;
+                  border-radius: 0.5rem;
+                  color: white;
+                  font-size: 0.9375rem;
+                  font-weight: 600;
+                  cursor: pointer;
+                  transition: all 0.2s;
+                  &:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(153, 69, 255, 0.4);
+                  }
+                  &:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                  }
+                `}
+              >
+                {wallet?.connecting ? 'Connecting...' : 'Connect Wallet'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div
+                css={css`
+                  display: flex;
+                  flex-direction: column;
+                  gap: 0.75rem;
+                  padding: 1rem;
+                  background: rgba(20, 241, 149, 0.1);
+                  border: 1px solid rgba(20, 241, 149, 0.3);
+                  border-radius: 0.5rem;
+                `}
+              >
+                <div
+                  css={css`
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                    color: #14f195;
+                  `}
+                >
+                  <div
+                    css={css`
+                      width: 0.5rem;
+                      height: 0.5rem;
+                      background: #14f195;
+                      border-radius: 50%;
+                      animation: pulse 2s infinite;
+                      @keyframes pulse {
+                        0%, 100% {
+                          opacity: 1;
+                        }
+                        50% {
+                          opacity: 0.5;
+                        }
+                      }
+                    `}
+                  />
+                  Connected
+                </div>
+                <div
+                  css={css`
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.25rem;
+                  `}
+                >
+                  <div
+                    css={css`
+                      font-size: 0.75rem;
+                      color: rgba(255, 255, 255, 0.6);
+                    `}
+                  >
+                    Wallet Address:
+                  </div>
+                  <div
+                    css={css`
+                      font-size: 0.875rem;
+                      font-family: monospace;
+                      color: rgba(255, 255, 255, 0.9);
+                      word-break: break-all;
+                    `}
+                  >
+                    {wallet.publicKey?.toString()}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleDisconnect}
+                css={css`
+                  padding: 0.75rem 1.5rem;
+                  background: rgba(239, 68, 68, 0.1);
+                  border: 1px solid rgba(239, 68, 68, 0.3);
+                  border-radius: 0.5rem;
+                  color: #ef4444;
+                  font-size: 0.9375rem;
+                  font-weight: 600;
+                  cursor: pointer;
+                  transition: all 0.2s;
+                  &:hover {
+                    background: rgba(239, 68, 68, 0.2);
+                    border-color: rgba(239, 68, 68, 0.5);
+                  }
+                `}
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </Pane>
+  )
+}
+
 const edifyTypes = [
   { value: 'my-purchases', label: 'My Purchases', icon: '🛒', isPurchaseFilter: true },
   { value: 'app', label: 'App', icon: '📱' },
@@ -2008,10 +2213,9 @@ function EdifyItems({ world, onClose }) {
         return
       }
 
-      // Verify token by making a test request
+      // Verify token by making a request to backend
       try {
-        const edifyEngineUrl = globalThis.env?.PUBLIC_EDIFY_ENGINE_URL || 'https://edifyengine.com'
-        const response = await fetch(`${edifyEngineUrl}/api/user/droplets`, {
+        const response = await fetch('/api/edify/verify-token', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -2030,9 +2234,14 @@ function EdifyItems({ world, onClose }) {
           throw new Error('Failed to verify token')
         }
 
-        // Token is valid
-        setIsAuthenticated(true)
-        setShowLogin(false)
+        const data = await response.json()
+        if (data.success) {
+          // Token is valid
+          setIsAuthenticated(true)
+          setShowLogin(false)
+        } else {
+          throw new Error(data.message || 'Token verification failed')
+        }
       } catch (err) {
         console.error('Error verifying token:', err)
         // On error, remove token and show login
@@ -2503,6 +2712,13 @@ function Wallets({ world, hidden }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [isEdifySigned, setIsEdifySigned] = useState(false)
+
+  useEffect(() => {
+    // Check if user is Edify-signed
+    const token = localStorage.getItem('edifyToken')
+    setIsEdifySigned(!!token)
+  }, [])
 
   useEffect(() => {
     const fetchWallets = async () => {
@@ -2762,6 +2978,24 @@ function Wallets({ world, hidden }) {
           ) : (
             <>
               {error && <div className='wallets-error'>{error}</div>}
+              {!isEdifySigned && (
+                <div
+                  css={css`
+                    padding: 0.75rem;
+                    background: rgba(255, 193, 7, 0.1);
+                    border: 1px solid rgba(255, 193, 7, 0.3);
+                    border-radius: 0.5rem;
+                    color: rgba(255, 193, 7, 0.9);
+                    font-size: 0.875rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                  `}
+                >
+                  <InfoIcon size='1rem' />
+                  <span>You must be signed in through Edify to edit wallet addresses</span>
+                </div>
+              )}
               <div className='wallets-add'>
                 <input
                   type='text'
@@ -2770,11 +3004,12 @@ function Wallets({ world, hidden }) {
                   value={newAddress}
                   onChange={e => setNewAddress(e.target.value)}
                   onKeyPress={e => e.key === 'Enter' && handleAddAddress()}
+                  disabled={!isEdifySigned}
                 />
                 <button
                   className='wallets-btn'
                   onClick={handleAddAddress}
-                  disabled={!newAddress.trim()}
+                  disabled={!newAddress.trim() || !isEdifySigned}
                 >
                   Add
                 </button>
@@ -2791,6 +3026,10 @@ function Wallets({ world, hidden }) {
                       <button
                         className='wallets-remove'
                         onClick={() => handleRemoveAddress(address)}
+                        disabled={!isEdifySigned}
+                        css={css`
+                          ${!isEdifySigned ? 'opacity: 0.5; cursor: not-allowed;' : ''}
+                        `}
                       >
                         Remove
                       </button>
@@ -2801,7 +3040,7 @@ function Wallets({ world, hidden }) {
               <button
                 className='wallets-btn'
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !isEdifySigned}
                 style={{ marginTop: 'auto' }}
               >
                 {saving ? 'Saving...' : 'Save Changes'}
